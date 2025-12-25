@@ -118,3 +118,10 @@ Status legend: [ ] todo, [x] done, [~] in progress
 - [ ] Do we need a hosted facilitator or router for the demo (or local-only)?
 - [ ] Decide whether to align with Coinbase facilitator APIs or keep Cheddr-specific verify/settle.
 - [ ] If we later upgrade to v2, revisit all header names, payload shapes, and middleware.
+
+
+## Optimisations
+- use the sequencer as a specialized rpc
+- allow the sequencer to take Cheddr as payment token to open channels
+- provide dual proto/json apis on the sequencer side and use protobuf in the header format (https://chatgpt.com/c/694d947c-8058-8332-b70b-ca0a0ed8b2d3)
+- update protocol to be compatible with x402 v2
