@@ -1,0 +1,1 @@
+create a client side library that allows users to pay with cpc

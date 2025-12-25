@@ -1,0 +1,3 @@
+[submodule "facilitator/x402-rs"]
+	path = facilitator/x402-rs
+	url = git@github.com:apetersson/x402-rs.git

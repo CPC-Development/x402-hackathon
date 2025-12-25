@@ -1,0 +1,1 @@
+create a hello-world service that performs a simple calculation in it's api that is guarded by x402. it takes 0,0001 cents per api call.
