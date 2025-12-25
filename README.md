@@ -39,6 +39,8 @@ git submodule update --init --recursive
 
 # bring up infra (partial while TODOs are pending)
 cd infra
+# optional: generate a ports.env with an offset (e.g. +42)
+PORT_OFFSET=42 ./gen-ports-env.sh
 docker compose --profile facilitator up
 ```
 

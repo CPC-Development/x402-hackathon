@@ -1,0 +1,54 @@
+# OS
+.DS_Store
+
+# Node
+node_modules/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+.yarn-global/
+.yarn-lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Hardhat
+contracts/hardhat/cache/
+contracts/hardhat/artifacts/
+contracts/hardhat/typechain-types/
+contracts/hardhat/deployments/
+contracts/hardhat/.env
+contracts/hardhat/.env.*
+
+# Rust
+**/target/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Build outputs
+**/dist/
+**/build/
+**/out/
+
+# Env
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+
+# Docker
+**/.dockerignore
+
+# Local data
+**/data/
+**/tmp/
