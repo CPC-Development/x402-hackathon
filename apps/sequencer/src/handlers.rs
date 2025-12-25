@@ -16,7 +16,8 @@ pub fn router(state: AppState) -> Router {
         .route("/channels/by-owner/:owner", get(list_channels_by_owner))
         .route("/channel/seed", post(seed_channel))
         .route("/channel/:id", get(get_channel))
-        .route("/pay-in-channel", post(pay_in_channel))
+        .route("/validate", post(validate_pay_in_channel))
+        .route("/settle", post(settle))
         .with_state(state)
 }
 
@@ -86,18 +87,36 @@ pub(crate) async fn get_channel(
 
 #[utoipa::path(
     post,
-    path = "/pay-in-channel",
+    path = "/validate",
     request_body = PayInChannelRequest,
     responses(
-        (status = 200, description = "Accepted channel update", body = PayInChannelResponse),
+        (status = 200, description = "Validated channel update (no state change)", body = PayInChannelResponse),
         (status = 400, description = "Bad request"),
         (status = 404, description = "Not found")
     )
 )]
-pub(crate) async fn pay_in_channel(
+pub(crate) async fn validate_pay_in_channel(
     State(state): State<AppState>,
     Json(payload): Json<PayInChannelRequest>,
 ) -> Result<Json<PayInChannelResponse>, AppError> {
-    let response = service::pay_in_channel(&state, payload).await?;
+    let response = service::validate_pay_in_channel(&state, payload).await?;
+    Ok(Json(response))
+}
+
+#[utoipa::path(
+    post,
+    path = "/settle",
+    request_body = PayInChannelRequest,
+    responses(
+        (status = 200, description = "Accepted channel update (state persisted)", body = PayInChannelResponse),
+        (status = 400, description = "Bad request"),
+        (status = 404, description = "Not found")
+    )
+)]
+pub(crate) async fn settle(
+    State(state): State<AppState>,
+    Json(payload): Json<PayInChannelRequest>,
+) -> Result<Json<PayInChannelResponse>, AppError> {
+    let response = service::settle(&state, payload).await?;
     Ok(Json(response))
 }

@@ -60,9 +60,56 @@ paths:
                 $ref: "#/components/schemas/ChannelView"
         "404":
           description: Not found
-  /pay-in-channel:
+  /channels/by-owner/{owner}:
+    get:
+      summary: List channels by owner (on-chain)
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Owner address (0x...)
+      responses:
+        "200":
+          description: Channels for owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelsByOwnerResponse"
+        "400":
+          description: Bad request
+  /validate:
     post:
-      summary: Submit a channel update
+      summary: Validate a channel update (no state change)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayInChannelRequest"
+            example:
+              channelId: "0x0000000000000000000000000000000000000000000000000000000000000000"
+              amount: "100"
+              receiver: "0x0000000000000000000000000000000000000000"
+              sequenceNumber: 1
+              timestamp: 1735600100
+              userSignature: "0x..."
+              purpose: "ORDER:demo-1"
+      responses:
+        "200":
+          description: Validated update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayInChannelResponse"
+        "400":
+          description: Bad request
+        "404":
+          description: Not found
+  /settle:
+    post:
+      summary: Submit a channel update (state persisted)
       requestBody:
         required: true
         content:
@@ -172,3 +219,13 @@ components:
       properties:
         channel:
           $ref: "#/components/schemas/ChannelView"
+    ChannelsByOwnerResponse:
+      type: object
+      required: [owner, channelIds]
+      properties:
+        owner:
+          type: string
+        channelIds:
+          type: array
+          items:
+            type: string

@@ -63,32 +63,46 @@ pub async fn get_channel(state: &AppState, channel_id: String) -> Result<Channel
     Ok(ChannelView::from_state(channel))
 }
 
-pub async fn pay_in_channel(state: &AppState, payload: PayInChannelRequest) -> Result<PayInChannelResponse, AppError> {
+pub async fn validate_pay_in_channel(
+    state: &AppState,
+    payload: PayInChannelRequest,
+) -> Result<PayInChannelResponse, AppError> {
     let channel_id = parse_h256(&payload.channel_id)?;
-    let receiver = parse_address(&payload.receiver)?;
-    let amount = parse_u256(&payload.amount)?;
-    let fee = payload
-        .fee_for_payment
-        .as_ref()
-        .map(|fee| -> Result<(Address, U256), AppError> {
-            let fee_address = parse_address(&fee.fee_destination_address)?;
-            let fee_amount = parse_u256(&fee.fee_amount_curds)?;
-            Ok((fee_address, fee_amount))
-        })
-        .transpose()?;
+    let channels = state.channels.read().await;
+    let channel = channels
+        .get(&payload.channel_id)
+        .ok_or_else(|| AppError::not_found("channel not found"))?;
 
-    if amount.is_zero() {
-        return Err(AppError::bad_request("amount must be greater than zero"));
+    if payload.sequence_number == channel.sequence_number {
+        if payload.user_signature == channel.user_signature && payload.timestamp == channel.signature_timestamp {
+            return Ok(PayInChannelResponse {
+                channel: ChannelView::from_state(channel),
+            });
+        }
+        return Err(AppError::bad_request("sequence already processed"));
+    }
+
+    if payload.sequence_number != channel.sequence_number + 1 {
+        return Err(AppError::bad_request("invalid sequence number"));
     }
 
     if let Some(purpose) = payload.purpose.as_deref() {
         info!(
             purpose = %purpose,
             channel_id = %format!("0x{:x}", channel_id),
-            "pay-in-channel purpose"
+            "settle purpose"
         );
     }
 
+    let updated = compute_next_state(channel, &payload, state)?;
+
+    Ok(PayInChannelResponse {
+        channel: ChannelView::from_state(&updated),
+    })
+}
+
+pub async fn settle(state: &AppState, payload: PayInChannelRequest) -> Result<PayInChannelResponse, AppError> {
+    let channel_id = parse_h256(&payload.channel_id)?;
     let mut channels = state.channels.write().await;
     let channel = channels
         .get_mut(&payload.channel_id)
@@ -105,6 +119,45 @@ pub async fn pay_in_channel(state: &AppState, payload: PayInChannelRequest) -> R
 
     if payload.sequence_number != channel.sequence_number + 1 {
         return Err(AppError::bad_request("invalid sequence number"));
+    }
+
+    if let Some(purpose) = payload.purpose.as_deref() {
+        info!(
+            purpose = %purpose,
+            channel_id = %format!("0x{:x}", channel_id),
+            "settle purpose"
+        );
+    }
+
+    let updated = compute_next_state(channel, &payload, state)?;
+    *channel = updated;
+
+    save_channel(&state.db, channel).await?;
+
+    Ok(PayInChannelResponse {
+        channel: ChannelView::from_state(channel),
+    })
+}
+
+fn compute_next_state(
+    channel: &ChannelState,
+    payload: &PayInChannelRequest,
+    state: &AppState,
+) -> Result<ChannelState, AppError> {
+    let receiver = parse_address(&payload.receiver)?;
+    let amount = parse_u256(&payload.amount)?;
+    let fee = payload
+        .fee_for_payment
+        .as_ref()
+        .map(|fee| -> Result<(Address, U256), AppError> {
+            let fee_address = parse_address(&fee.fee_destination_address)?;
+            let fee_amount = parse_u256(&fee.fee_amount_curds)?;
+            Ok((fee_address, fee_amount))
+        })
+        .transpose()?;
+
+    if amount.is_zero() {
+        return Err(AppError::bad_request("amount must be greater than zero"));
     }
 
     validate_timestamp(payload.timestamp, channel.expiry_ts)?;
@@ -140,16 +193,13 @@ pub async fn pay_in_channel(state: &AppState, payload: PayInChannelRequest) -> R
         return Err(AppError::bad_request("invalid user signature"));
     }
 
-    channel.sequence_number = payload.sequence_number;
-    channel.user_signature = payload.user_signature.clone();
-    channel.signature_timestamp = payload.timestamp;
-    channel.recipients = recipients;
+    let mut updated = channel.clone();
+    updated.sequence_number = payload.sequence_number;
+    updated.user_signature = payload.user_signature.clone();
+    updated.signature_timestamp = payload.timestamp;
+    updated.recipients = recipients;
 
-    save_channel(&state.db, channel).await?;
-
-    Ok(PayInChannelResponse {
-        channel: ChannelView::from_state(channel),
-    })
+    Ok(updated)
 }
 
 pub async fn list_channels_by_owner(state: &AppState, owner: String) -> Result<ChannelsByOwnerResponse, AppError> {

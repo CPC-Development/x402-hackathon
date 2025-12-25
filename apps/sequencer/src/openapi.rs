@@ -9,7 +9,8 @@ use crate::{handlers, model};
         handlers::list_channels_by_owner,
         handlers::seed_channel,
         handlers::get_channel,
-        handlers::pay_in_channel
+        handlers::validate_pay_in_channel,
+        handlers::settle
     ),
     components(
         schemas(
