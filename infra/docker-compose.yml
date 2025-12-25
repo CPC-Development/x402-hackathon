@@ -14,7 +14,7 @@ services:
 
   postgres:
     image: postgres:16
-    profiles: ["sequencer"]
+    profiles: ["sequencer", "facilitator"]
     environment:
       POSTGRES_USER: x402
       POSTGRES_PASSWORD: x402
@@ -37,12 +37,14 @@ services:
       - ./facilitator-config.json:/app/config.json:ro
     environment:
       - RUST_LOG=info
+      - CHANNEL_MANAGER_ADDRESS=${CHANNEL_MANAGER_ADDRESS:-}
+      - USDC_ADDRESS=${USDC_ADDRESS:-}
 
   sequencer:
     build:
       context: ../apps/sequencer
       dockerfile: Dockerfile
-    profiles: ["sequencer"]
+    profiles: ["sequencer", "facilitator"]
     depends_on:
       - postgres
     ports:

@@ -20,7 +20,9 @@
       "id": "v1-eip155-cpc",
       "chains": "eip155:31337",
       "config": {
-        "sequencerUrl": "http://sequencer:4001"
+        "sequencerUrl": "http://sequencer:4001",
+        "channelManager": "$CHANNEL_MANAGER_ADDRESS",
+        "paymentToken": "$USDC_ADDRESS"
       }
     }
   ]
