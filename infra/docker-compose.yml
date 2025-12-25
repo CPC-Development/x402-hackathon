@@ -24,10 +24,12 @@ services:
       context: ../facilitator/x402-rs
       dockerfile: Dockerfile
     profiles: ["facilitator"]
+    depends_on:
+      - sequencer
     ports:
       - "${FACILITATOR_PORT:-8080}:8080"
     volumes:
-      - ../facilitator/x402-rs/config.json:/app/config.json:ro
+      - ./facilitator-config.json:/app/config.json:ro
     environment:
       - RUST_LOG=info
 
