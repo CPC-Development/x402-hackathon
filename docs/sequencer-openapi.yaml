@@ -1,0 +1,174 @@
+openapi: 3.0.3
+info:
+  title: CPC Sequencer API
+  version: 0.1.0
+  description: |
+    Sequencer endpoints for CPC payment-channel updates. This spec mirrors the Rust
+    sequencer service and is intended for Postman/Insomnia or quick manual testing.
+servers:
+  - url: http://localhost:4001
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+  /channel/seed:
+    post:
+      summary: Seed a channel state (demo helper)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeedChannelRequest"
+            example:
+              channelId: "0x0000000000000000000000000000000000000000000000000000000000000000"
+              owner: "0x0000000000000000000000000000000000000000"
+              balance: "1000000"
+              expiryTimestamp: 1735600000
+      responses:
+        "200":
+          description: Channel seeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelView"
+        "400":
+          description: Bad request
+  /channel/{id}:
+    get:
+      summary: Get channel state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Channel id (0x...)
+      responses:
+        "200":
+          description: Channel state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelView"
+        "404":
+          description: Not found
+  /pay-in-channel:
+    post:
+      summary: Submit a channel update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayInChannelRequest"
+            example:
+              channelId: "0x0000000000000000000000000000000000000000000000000000000000000000"
+              amount: "100"
+              receiver: "0x0000000000000000000000000000000000000000"
+              sequenceNumber: 1
+              timestamp: 1735600100
+              userSignature: "0x..."
+              purpose: "ORDER:demo-1"
+      responses:
+        "200":
+          description: Accepted update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayInChannelResponse"
+        "400":
+          description: Bad request
+        "404":
+          description: Not found
+components:
+  schemas:
+    SeedChannelRequest:
+      type: object
+      required: [channelId, owner, balance, expiryTimestamp]
+      properties:
+        channelId:
+          type: string
+        owner:
+          type: string
+        balance:
+          type: string
+        expiryTimestamp:
+          type: integer
+          format: int64
+    FeeForPayment:
+      type: object
+      required: [feeDestinationAddress, feeAmountCurds]
+      properties:
+        feeDestinationAddress:
+          type: string
+        feeAmountCurds:
+          type: string
+    PayInChannelRequest:
+      type: object
+      required: [channelId, amount, receiver, sequenceNumber, timestamp, userSignature]
+      properties:
+        channelId:
+          type: string
+        amount:
+          type: string
+        receiver:
+          type: string
+        sequenceNumber:
+          type: integer
+          format: int64
+        timestamp:
+          type: integer
+          format: int64
+        userSignature:
+          type: string
+        purpose:
+          type: string
+        feeForPayment:
+          $ref: "#/components/schemas/FeeForPayment"
+    ChannelView:
+      type: object
+      required: [channelId, owner, balance, expiryTimestamp, sequenceNumber, userSignature, signatureTimestamp, recipients]
+      properties:
+        channelId:
+          type: string
+        owner:
+          type: string
+        balance:
+          type: string
+        expiryTimestamp:
+          type: integer
+          format: int64
+        sequenceNumber:
+          type: integer
+          format: int64
+        userSignature:
+          type: string
+        signatureTimestamp:
+          type: integer
+          format: int64
+        recipients:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipientView"
+    RecipientView:
+      type: object
+      required: [recipientAddress, balance]
+      properties:
+        recipientAddress:
+          type: string
+        balance:
+          type: string
+    PayInChannelResponse:
+      type: object
+      required: [channel]
+      properties:
+        channel:
+          $ref: "#/components/schemas/ChannelView"

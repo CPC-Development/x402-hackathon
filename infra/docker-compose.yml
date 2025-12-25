@@ -7,6 +7,18 @@ services:
     ports:
       - "${HARDHAT_PORT:-8545}:8545"
 
+  postgres:
+    image: postgres:16
+    profiles: ["sequencer"]
+    environment:
+      POSTGRES_USER: x402
+      POSTGRES_PASSWORD: x402
+      POSTGRES_DB: x402
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - x402_pg:/var/lib/postgresql/data
+
   facilitator:
     build:
       context: ../facilitator/x402-rs
@@ -23,10 +35,17 @@ services:
     build:
       context: ../apps/sequencer
       dockerfile: Dockerfile
-    profiles: ["todo"]
-    command: ["sh", "-c", "echo TODO: add sequencer Dockerfile; sleep infinity"]
+    profiles: ["sequencer"]
+    depends_on:
+      - postgres
     ports:
       - "${SEQUENCER_PORT:-4001}:4001"
+    environment:
+      DATABASE_URL: "postgres://x402:x402@postgres:5432/x402"
+      CHAIN_ID: "${CHAIN_ID:-31337}"
+      CHANNEL_MANAGER_ADDRESS: "${CHANNEL_MANAGER_ADDRESS:-0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512}"
+      MAX_RECIPIENTS: "${MAX_RECIPIENTS:-30}"
+      PORT: "4001"
 
   service:
     build:
@@ -40,3 +59,6 @@ services:
 networks:
   default:
     name: x402_demo
+
+volumes:
+  x402_pg:

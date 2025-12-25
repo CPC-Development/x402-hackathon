@@ -1,0 +1,32 @@
+use utoipa::OpenApi;
+
+use crate::{handlers, model};
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        handlers::health,
+        handlers::seed_channel,
+        handlers::get_channel,
+        handlers::pay_in_channel
+    ),
+    components(
+        schemas(
+            model::SeedChannelRequest,
+            model::PayInChannelRequest,
+            model::FeeForPayment,
+            model::ChannelView,
+            model::RecipientView,
+            model::PayInChannelResponse
+        )
+    ),
+    tags(
+        (name = "sequencer", description = "CPC sequencer endpoints")
+    ),
+    info(
+        title = "CPC Sequencer API",
+        description = "Sequencer endpoints for CPC payment-channel updates. Use /docs for Swagger UI.",
+        version = "0.1.0"
+    )
+)]
+pub struct ApiDoc;
