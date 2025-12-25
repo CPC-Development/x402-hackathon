@@ -8,7 +8,7 @@ Namespace: `eip155`
 This scheme maps Cheddr payment-channel updates to the x402 v1 payment envelope.
 It is derived from:
 - Sequencer DTOs and validation logic in `cpc-pos/backend/src/modules/sequencer/`
-- On-chain data model and signature verification in `github-cpc-contracts/HardHat-New/contracts/CheddrChannelManager.sol`
+- On-chain data model and signature verification adapted from `github-cpc-contracts/HardHat-New/contracts/CheddrChannelManager.sol`
 - Client-side signing flow in `cpc-user/src/libs/hooks/usePaymentChannelUpdate.ts` and helpers
 - Hardhat helper signer in `github-cpc-contracts/HardHat-New/test/utils/safeTestHelpers.ts`
 
@@ -53,12 +53,12 @@ Base shape (per x402 v1 in `x402/facilitator/x402-rs/src/proto/v1.rs`):
   "channelId": "0x<bytes32>",
   "nextSequenceNumber": 1,
   "channelExpiry": 1710000000,
-  "channelManager": "0x<cheddrChannelManagerAddress>",
+  "channelManager": "0x<x402CheddrPaymentChannelAddress>",
   "domain": {
-    "name": "CheddrChannelManager",
+    "name": "X402CheddrPaymentChannel",
     "version": "1",
     "chainId": 84532,
-    "verifyingContract": "0x<cheddrChannelManagerAddress>"
+    "verifyingContract": "0x<x402CheddrPaymentChannelAddress>"
   },
   "timestampSkewSeconds": 900,
   "maxRecipients": 30,
@@ -70,13 +70,13 @@ Base shape (per x402 v1 in `x402/facilitator/x402-rs/src/proto/v1.rs`):
 Field notes:
 - `channelId`: matches on-chain `getChannelId(owner, expiryTime, amount)`:
   - `keccak256(abi.encodePacked(owner, expiryTime, amount, domainSeparator))`
-- `domain`: must match EIP-712 domain used in CheddrChannelManager:
-  - name: "CheddrChannelManager"
+- `domain`: must match EIP-712 domain used in X402CheddrPaymentChannel:
+  - name: "X402CheddrPaymentChannel"
   - version: "1"
   - chainId: network chain ID
-  - verifyingContract: CheddrChannelManager address
+  - verifyingContract: X402CheddrPaymentChannel address
 - `nextSequenceNumber`: expected sequence for the next update (sequencer enforces `current + 1`).
-- `timestampSkewSeconds`: CheddrChannelManager requires signature timestamp not too far in the future
+- `timestampSkewSeconds`: X402CheddrPaymentChannel requires signature timestamp not too far in the future
   (15 minutes used on-chain).
 - `maxRecipients`: sequencer default max recipients (configurable).
 - `feeDestinationAddress`: optional; if present, client may include `feeForPayment` in payload.
@@ -116,7 +116,7 @@ The signed message is constructed from the full recipient/balance state after ap
 ```ts
 // EIP-712 domain
 {
-  name: "CheddrChannelManager",
+  name: "X402CheddrPaymentChannel",
   version: "1",
   chainId: <chainId>,
   verifyingContract: <channelManager>
@@ -151,7 +151,7 @@ Sequencer reconstructs `recipients` and `amounts` using current channel state + 
 
 ## 5) Validation Rules (Server/Facilitator)
 
-Based on `PaymentService.processPayInChannel` and `CheddrChannelManager`:
+Based on `PaymentService.processPayInChannel` and X402CheddrPaymentChannel:
 - Channel must exist and be open.
 - `amount` > 0.
 - `sequenceNumber` must equal `channel.sequenceNumber + 1`.
@@ -159,7 +159,7 @@ Based on `PaymentService.processPayInChannel` and `CheddrChannelManager`:
 - Recipients length must be <= `SEQUENCER_MAX_RECIPIENTS` (default 30).
 - Signature must be valid for:
   - EOA or ERC-1271 (off-chain)
-  - SignatureVerifier and CheddrChannelManager (on-chain)
+  - SignatureVerifier and X402CheddrPaymentChannel (on-chain)
 - Signature timestamp checks:
   - Not too far in the future (15-minute skew allowed).
   - Must be <= channel expiry.
@@ -184,12 +184,12 @@ Based on `PaymentService.processPayInChannel` and `CheddrChannelManager`:
         "channelId": "0x<bytes32>",
         "nextSequenceNumber": 7,
         "channelExpiry": 1710000000,
-        "channelManager": "0x<cheddrChannelManagerAddress>",
+        "channelManager": "0x<x402CheddrPaymentChannelAddress>",
         "domain": {
-          "name": "CheddrChannelManager",
+          "name": "X402CheddrPaymentChannel",
           "version": "1",
           "chainId": 84532,
-          "verifyingContract": "0x<cheddrChannelManagerAddress>"
+          "verifyingContract": "0x<x402CheddrPaymentChannelAddress>"
         },
         "timestampSkewSeconds": 900,
         "maxRecipients": 30
@@ -224,3 +224,5 @@ Based on `PaymentService.processPayInChannel` and `CheddrChannelManager`:
 - The facilitator or resource server should call the sequencer to verify/settle this payload.
 - Sequencer will compute recipient balances and generate the sequencer signature.
 - On-chain publish (optional) uses `publishIntermediateChannelState` and needs both user + sequencer signatures.
+- Opening a channel requires an EOA signature over an empty state (sequenceNumber = 0, recipients = [], amounts = [])
+  with a timestamp that is not in the future and not after the channel expiry.
