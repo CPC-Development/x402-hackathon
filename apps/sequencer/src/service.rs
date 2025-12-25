@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use ethers_core::types::{Address, U256};
+use ethers_core::types::{Address, U256, H256};
+use ethers_providers::{Http, Provider};
 use tracing::info;
 use tokio::sync::RwLock;
 
@@ -9,7 +10,15 @@ use crate::{
     crypto::{parse_address, parse_h256, parse_u256, recover_signature, validate_timestamp},
     db::{save_channel},
     error::AppError,
-    model::{ChannelState, ChannelView, PayInChannelRequest, PayInChannelResponse, RecipientBalance, SeedChannelRequest},
+    model::{
+        ChannelState,
+        ChannelView,
+        ChannelsByOwnerResponse,
+        PayInChannelRequest,
+        PayInChannelResponse,
+        RecipientBalance,
+        SeedChannelRequest,
+    },
 };
 use sqlx::PgPool;
 
@@ -18,6 +27,7 @@ pub struct AppState {
     pub db: PgPool,
     pub channels: Arc<RwLock<HashMap<String, ChannelState>>>,
     pub config: Arc<Config>,
+    pub provider: Arc<Provider<Http>>,
 }
 
 pub async fn seed_channel(state: &AppState, payload: SeedChannelRequest) -> Result<ChannelView, AppError> {
@@ -140,6 +150,48 @@ pub async fn pay_in_channel(state: &AppState, payload: PayInChannelRequest) -> R
     Ok(PayInChannelResponse {
         channel: ChannelView::from_state(channel),
     })
+}
+
+pub async fn list_channels_by_owner(state: &AppState, owner: String) -> Result<ChannelsByOwnerResponse, AppError> {
+    let owner_address = parse_address(&owner)?;
+    let contract = channel_manager_contract(state.provider.clone(), state.config.channel_manager);
+
+    let length: U256 = contract
+        .method("getUserChannelLength", owner_address)
+        .map_err(|e| AppError::bad_request(format!("abi error: {e}")))?
+        .call()
+        .await
+        .map_err(|e| AppError::bad_request(format!("rpc error: {e}")))?;
+
+    let mut channel_ids = Vec::with_capacity(length.as_usize());
+    for index in 0..length.as_usize() {
+        let channel_id: H256 = contract
+            .method("userChannels", (owner_address, U256::from(index)))
+            .map_err(|e| AppError::bad_request(format!("abi error: {e}")))?
+            .call()
+            .await
+            .map_err(|e| AppError::bad_request(format!("rpc error: {e}")))?;
+        channel_ids.push(format!("0x{:x}", channel_id));
+    }
+
+    Ok(ChannelsByOwnerResponse {
+        owner: format!("0x{:x}", owner_address),
+        channel_ids,
+    })
+}
+
+fn channel_manager_contract(
+    provider: Arc<Provider<Http>>,
+    address: Address,
+) -> ethers_contract::Contract<Provider<Http>> {
+    let abi = ethers_core::abi::Abi::load(
+        br#"[
+            {"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"getUserChannelLength","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+            {"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"userChannels","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}
+        ]"# as &[u8],
+    )
+    .expect("valid ABI");
+    ethers_contract::Contract::new(address, abi, provider)
 }
 
 fn add_amount(recipients: &mut Vec<RecipientBalance>, address: Address, amount: U256) {

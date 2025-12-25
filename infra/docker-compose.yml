@@ -42,6 +42,7 @@ services:
       - "${SEQUENCER_PORT:-4001}:4001"
     environment:
       DATABASE_URL: "postgres://x402:x402@postgres:5432/x402"
+      RPC_URL: "${RPC_URL:-http://hardhat:8545}"
       CHAIN_ID: "${CHAIN_ID:-31337}"
       CHANNEL_MANAGER_ADDRESS: "${CHANNEL_MANAGER_ADDRESS:-0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512}"
       MAX_RECIPIENTS: "${MAX_RECIPIENTS:-30}"

@@ -10,6 +10,7 @@ mod service;
 use std::{net::SocketAddr, sync::Arc};
 
 use dotenvy::dotenv;
+use ethers_providers::{Http, Provider};
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -42,10 +43,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_db(&db).await?;
     let channels = load_state(&db).await?;
 
+    let provider = Arc::new(Provider::<Http>::try_from(config.rpc_url.as_str())?);
+
     let state = AppState {
         db,
         channels: Arc::new(RwLock::new(channels)),
         config,
+        provider,
     };
 
     let app = router(state).merge(SwaggerUi::new("/docs").url("/openapi.json", ApiDoc::openapi()));

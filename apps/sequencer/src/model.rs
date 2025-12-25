@@ -76,6 +76,13 @@ pub struct PayInChannelResponse {
     pub channel: ChannelView,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelsByOwnerResponse {
+    pub owner: String,
+    pub channel_ids: Vec<String>,
+}
+
 impl ChannelView {
     pub fn from_state(channel: &ChannelState) -> Self {
         Self {

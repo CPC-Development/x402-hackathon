@@ -13,6 +13,8 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1.0"
+ethers-contract = "2.0.14"
 ethers-core = "2.0.14"
+ethers-providers = "2.0.14"
 utoipa = { version = "4.2", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }

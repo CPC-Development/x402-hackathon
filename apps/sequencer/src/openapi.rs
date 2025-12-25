@@ -6,6 +6,7 @@ use crate::{handlers, model};
 #[openapi(
     paths(
         handlers::health,
+        handlers::list_channels_by_owner,
         handlers::seed_channel,
         handlers::get_channel,
         handlers::pay_in_channel
@@ -16,6 +17,7 @@ use crate::{handlers, model};
             model::PayInChannelRequest,
             model::FeeForPayment,
             model::ChannelView,
+            model::ChannelsByOwnerResponse,
             model::RecipientView,
             model::PayInChannelResponse
         )
