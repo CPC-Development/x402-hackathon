@@ -1,13 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
-use ethers_core::types::{Address, U256, H256};
+use ethers_core::types::{Address, H256, U256};
 use ethers_providers::{Http, Provider};
+use ethers_signers::LocalWallet;
 use tracing::info;
 use tokio::sync::RwLock;
 
 use crate::{
     config::Config,
-    crypto::{parse_address, parse_h256, parse_u256, recover_signature, validate_timestamp},
+    crypto::{parse_address, parse_h256, parse_u256, recover_signature, sign_update, validate_timestamp},
     db::{save_channel},
     error::AppError,
     model::{
@@ -28,6 +29,7 @@ pub struct AppState {
     pub channels: Arc<RwLock<HashMap<String, ChannelState>>>,
     pub config: Arc<Config>,
     pub provider: Arc<Provider<Http>>,
+    pub sequencer_wallet: LocalWallet,
 }
 
 pub async fn seed_channel(state: &AppState, payload: SeedChannelRequest) -> Result<ChannelView, AppError> {
@@ -42,6 +44,7 @@ pub async fn seed_channel(state: &AppState, payload: SeedChannelRequest) -> Resu
         expiry_ts: payload.expiry_timestamp,
         sequence_number: 0,
         user_signature: String::new(),
+        sequencer_signature: String::new(),
         signature_timestamp: 0,
         recipients: Vec::new(),
     };
@@ -130,6 +133,18 @@ pub async fn settle(state: &AppState, payload: PayInChannelRequest) -> Result<Pa
     }
 
     let updated = compute_next_state(channel, &payload, state)?;
+    let sequencer_signature = sign_update(
+        &state.sequencer_wallet,
+        updated.channel_id,
+        updated.sequence_number,
+        updated.signature_timestamp,
+        &updated.recipients,
+        state.config.chain_id,
+        state.config.channel_manager,
+    )?;
+
+    let mut updated = updated;
+    updated.sequencer_signature = sequencer_signature;
     *channel = updated;
 
     save_channel(&state.db, channel).await?;
@@ -196,6 +211,7 @@ fn compute_next_state(
     let mut updated = channel.clone();
     updated.sequence_number = payload.sequence_number;
     updated.user_signature = payload.user_signature.clone();
+    updated.sequencer_signature = String::new();
     updated.signature_timestamp = payload.timestamp;
     updated.recipients = recipients;
 
@@ -230,6 +246,19 @@ pub async fn list_channels_by_owner(state: &AppState, owner: String) -> Result<C
     })
 }
 
+pub async fn fetch_sequencer_address(
+    provider: Arc<Provider<Http>>,
+    channel_manager: Address,
+) -> Result<Address, AppError> {
+    let contract = sequencer_address_contract(provider, channel_manager);
+    contract
+        .method::<_, Address>("sequencer", ())
+        .map_err(|e| AppError::bad_request(format!("abi error: {e}")))?
+        .call()
+        .await
+        .map_err(|e| AppError::bad_request(format!("rpc error: {e}")))
+}
+
 fn channel_manager_contract(
     provider: Arc<Provider<Http>>,
     address: Address,
@@ -241,6 +270,15 @@ fn channel_manager_contract(
         ]"# as &[u8],
     )
     .expect("valid ABI");
+    ethers_contract::Contract::new(address, abi, provider)
+}
+
+fn sequencer_address_contract(
+    provider: Arc<Provider<Http>>,
+    address: Address,
+) -> ethers_contract::Contract<Provider<Http>> {
+    let abi = ethers_core::abi::Abi::load(br#"[{"inputs":[],"name":"sequencer","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]"# as &[u8])
+        .expect("valid ABI");
     ethers_contract::Contract::new(address, abi, provider)
 }
 

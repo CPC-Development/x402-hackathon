@@ -8,6 +8,7 @@ const DEFAULT_RPC_URL: &str = "http://hardhat:8545";
 const DEFAULT_CHAIN_ID: u64 = 31337;
 const DEFAULT_MAX_RECIPIENTS: usize = 30;
 const DEFAULT_PORT: u16 = 4001;
+const DEFAULT_SEQUENCER_PRIVATE_KEY: &str = "";
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -16,6 +17,7 @@ pub struct Config {
     pub chain_id: u64,
     pub channel_manager: Address,
     pub max_recipients: usize,
+    pub sequencer_private_key: String,
     pub port: u16,
 }
 
@@ -35,13 +37,18 @@ impl Config {
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(DEFAULT_MAX_RECIPIENTS);
+        let sequencer_private_key =
+            std::env::var("SEQUENCER_PRIVATE_KEY").unwrap_or_else(|_| DEFAULT_SEQUENCER_PRIVATE_KEY.to_string());
         let port = std::env::var("PORT")
             .ok()
             .and_then(|v| v.parse::<u16>().ok())
             .unwrap_or(DEFAULT_PORT);
 
         if channel_manager == Address::zero() {
-            return Err(AppError::bad_request("CHANNEL_MANAGER_ADDRESS is not set"));
+            return Err(AppError::bad_request("CHANNEL_MANAGER_ADDRESS resolved to zero address"));
+        }
+        if sequencer_private_key.is_empty() {
+            return Err(AppError::bad_request("SEQUENCER_PRIVATE_KEY is not set"));
         }
 
         Ok(Self {
@@ -50,6 +57,7 @@ impl Config {
             chain_id,
             channel_manager,
             max_recipients,
+            sequencer_private_key,
             port,
         })
     }

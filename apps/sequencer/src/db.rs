@@ -13,8 +13,15 @@ pub async fn init_db(db: &PgPool) -> Result<(), sqlx::Error> {
             expiry_ts BIGINT NOT NULL,\
             sequence_number BIGINT NOT NULL,\
             user_signature TEXT NOT NULL,\
+            sequencer_signature TEXT NOT NULL,\
             signature_timestamp BIGINT NOT NULL\
         )",
+    )
+    .execute(db)
+    .await?;
+
+    sqlx::query(
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS sequencer_signature TEXT NOT NULL DEFAULT ''",
     )
     .execute(db)
     .await?;
@@ -38,7 +45,7 @@ pub async fn init_db(db: &PgPool) -> Result<(), sqlx::Error> {
 pub async fn load_state(db: &PgPool) -> Result<HashMap<String, ChannelState>, sqlx::Error> {
     let mut map = HashMap::new();
     let rows = sqlx::query(
-        "SELECT channel_id, owner, balance, expiry_ts, sequence_number, user_signature, signature_timestamp FROM channels",
+        "SELECT channel_id, owner, balance, expiry_ts, sequence_number, user_signature, sequencer_signature, signature_timestamp FROM channels",
     )
     .fetch_all(db)
     .await?;
@@ -50,6 +57,7 @@ pub async fn load_state(db: &PgPool) -> Result<HashMap<String, ChannelState>, sq
         let expiry_ts: i64 = row.try_get("expiry_ts")?;
         let sequence_number: i64 = row.try_get("sequence_number")?;
         let user_signature: String = row.try_get("user_signature")?;
+        let sequencer_signature: String = row.try_get("sequencer_signature")?;
         let signature_timestamp: i64 = row.try_get("signature_timestamp")?;
 
         let recipients_rows = sqlx::query(
@@ -78,6 +86,7 @@ pub async fn load_state(db: &PgPool) -> Result<HashMap<String, ChannelState>, sq
             expiry_ts: expiry_ts as u64,
             sequence_number: sequence_number as u64,
             user_signature,
+            sequencer_signature,
             signature_timestamp: signature_timestamp as u64,
             recipients,
         };
@@ -90,14 +99,15 @@ pub async fn load_state(db: &PgPool) -> Result<HashMap<String, ChannelState>, sq
 
 pub async fn save_channel(db: &PgPool, channel: &ChannelState) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO channels (channel_id, owner, balance, expiry_ts, sequence_number, user_signature, signature_timestamp)\
-         VALUES ($1, $2, $3, $4, $5, $6, $7)\
+        "INSERT INTO channels (channel_id, owner, balance, expiry_ts, sequence_number, user_signature, sequencer_signature, signature_timestamp)\
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\
          ON CONFLICT (channel_id) DO UPDATE SET\
             owner = EXCLUDED.owner,\
             balance = EXCLUDED.balance,\
             expiry_ts = EXCLUDED.expiry_ts,\
             sequence_number = EXCLUDED.sequence_number,\
             user_signature = EXCLUDED.user_signature,\
+            sequencer_signature = EXCLUDED.sequencer_signature,\
             signature_timestamp = EXCLUDED.signature_timestamp",
     )
     .bind(format!("0x{:x}", channel.channel_id))
@@ -106,6 +116,7 @@ pub async fn save_channel(db: &PgPool, channel: &ChannelState) -> Result<(), sql
     .bind(channel.expiry_ts as i64)
     .bind(channel.sequence_number as i64)
     .bind(channel.user_signature.clone())
+    .bind(channel.sequencer_signature.clone())
     .bind(channel.signature_timestamp as i64)
     .execute(db)
     .await?;

@@ -37,12 +37,17 @@ Keep CPC changes isolated to a new scheme module and a small registration change
 cd x402
 git submodule update --init --recursive
 
-# bring up infra (partial while TODOs are pending)
+# one-shot hardhat bootstrap (random mnemonic + create2 deploy + write .env)
 cd infra
-# optional: generate a .env with an offset (e.g. +42)
-PORT_OFFSET=42 ./gen-ports-env.sh
-docker compose --profile facilitator up
+PORT_OFFSET=42 ./bootstrap-hardhat.sh
+
+# start sequencer + facilitator
+docker compose --profile sequencer up -d --build sequencer
+docker compose --profile facilitator up -d --build facilitator
 ```
+
+Notes:
+- `bootstrap-hardhat.sh` runs `generate-env.sh`, deploys via Ignition + CREATE2, then writes `CHANNEL_MANAGER_ADDRESS` and `USDC_ADDRESS` into `.env`.
 
 ## Demo flow (target)
 

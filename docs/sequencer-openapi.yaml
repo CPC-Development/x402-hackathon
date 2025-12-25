@@ -182,7 +182,18 @@ components:
           $ref: "#/components/schemas/FeeForPayment"
     ChannelView:
       type: object
-      required: [channelId, owner, balance, expiryTimestamp, sequenceNumber, userSignature, signatureTimestamp, recipients]
+      required:
+        [
+          channelId,
+          owner,
+          balance,
+          expiryTimestamp,
+          sequenceNumber,
+          userSignature,
+          sequencerSignature,
+          signatureTimestamp,
+          recipients
+        ]
       properties:
         channelId:
           type: string
@@ -197,6 +208,8 @@ components:
           type: integer
           format: int64
         userSignature:
+          type: string
+        sequencerSignature:
           type: string
         signatureTimestamp:
           type: integer

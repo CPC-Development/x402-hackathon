@@ -10,6 +10,7 @@ pub struct ChannelState {
     pub expiry_ts: u64,
     pub sequence_number: u64,
     pub user_signature: String,
+    pub sequencer_signature: String,
     pub signature_timestamp: u64,
     pub recipients: Vec<RecipientBalance>,
 }
@@ -59,6 +60,7 @@ pub struct ChannelView {
     pub expiry_timestamp: u64,
     pub sequence_number: u64,
     pub user_signature: String,
+    pub sequencer_signature: String,
     pub signature_timestamp: u64,
     pub recipients: Vec<RecipientView>,
 }
@@ -92,6 +94,7 @@ impl ChannelView {
             expiry_timestamp: channel.expiry_ts,
             sequence_number: channel.sequence_number,
             user_signature: channel.user_signature.clone(),
+            sequencer_signature: channel.sequencer_signature.clone(),
             signature_timestamp: channel.signature_timestamp,
             recipients: channel
                 .recipients

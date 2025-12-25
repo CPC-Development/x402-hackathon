@@ -3,6 +3,7 @@ use ethers_core::{
     types::{Address, H256, Signature, U256},
     utils::keccak256,
 };
+use ethers_signers::LocalWallet;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -48,6 +49,51 @@ pub fn recover_signature(
     verifying_contract: Address,
     signature: &str,
 ) -> Result<Address, AppError> {
+    let digest = channel_update_digest(
+        channel_id,
+        sequence_number,
+        timestamp,
+        recipients,
+        chain_id,
+        verifying_contract,
+    );
+    let sig = Signature::from_str(signature)
+        .map_err(|e| AppError::bad_request(format!("invalid signature: {e}")))?;
+    sig.recover(digest)
+        .map_err(|e| AppError::bad_request(format!("signature recovery failed: {e}")))
+}
+
+pub fn sign_update(
+    wallet: &LocalWallet,
+    channel_id: H256,
+    sequence_number: u64,
+    timestamp: u64,
+    recipients: &[RecipientBalance],
+    chain_id: u64,
+    verifying_contract: Address,
+) -> Result<String, AppError> {
+    let digest = channel_update_digest(
+        channel_id,
+        sequence_number,
+        timestamp,
+        recipients,
+        chain_id,
+        verifying_contract,
+    );
+    let signature = wallet
+        .sign_hash(digest)
+        .map_err(|e| AppError::bad_request(format!("sequencer signing failed: {e}")))?;
+    Ok(signature.to_string())
+}
+
+fn channel_update_digest(
+    channel_id: H256,
+    sequence_number: u64,
+    timestamp: u64,
+    recipients: &[RecipientBalance],
+    chain_id: u64,
+    verifying_contract: Address,
+) -> H256 {
     let recipients_hash = hash_addresses(recipients.iter().map(|r| r.recipient_address));
     let amounts_hash = hash_u256s(recipients.iter().map(|r| r.balance));
 
@@ -71,12 +117,7 @@ pub fn recover_signature(
     digest_input.extend_from_slice(&[0x19, 0x01]);
     digest_input.extend_from_slice(domain_separator.as_bytes());
     digest_input.extend_from_slice(struct_hash.as_bytes());
-    let digest = H256::from(keccak256(digest_input));
-
-    let sig = Signature::from_str(signature)
-        .map_err(|e| AppError::bad_request(format!("invalid signature: {e}")))?;
-    sig.recover(digest)
-        .map_err(|e| AppError::bad_request(format!("signature recovery failed: {e}")))
+    H256::from(keccak256(digest_input))
 }
 
 fn domain_separator(chain_id: u64, verifying_contract: Address) -> H256 {

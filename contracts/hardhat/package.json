@@ -5,10 +5,13 @@
   "scripts": {
     "build": "hardhat compile",
     "node": "hardhat node --hostname 0.0.0.0",
-    "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost"
+    "deploy:localhost": "hardhat ignition deploy ignition/modules/X402.ts --network localhost --deployment-id x402 --strategy create2"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@nomicfoundation/hardhat-ignition": "^0.15.8",
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15.8",
+    "@nomicfoundation/hardhat-verify": "^2.1.0",
     "hardhat": "^2.22.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",

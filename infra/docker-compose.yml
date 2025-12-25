@@ -6,6 +6,11 @@ services:
     profiles: ["hardhat"]
     ports:
       - "${HARDHAT_PORT:-8545}:8545"
+    environment:
+      - HARDHAT_MNEMONIC=${HARDHAT_MNEMONIC:-}
+      - IGNITION_CREATE2_SALT=${IGNITION_CREATE2_SALT:-}
+    volumes:
+      - ../contracts/hardhat/ignition:/app/ignition
 
   postgres:
     image: postgres:16
@@ -46,8 +51,9 @@ services:
       DATABASE_URL: "postgres://x402:x402@postgres:5432/x402"
       RPC_URL: "${RPC_URL:-http://hardhat:8545}"
       CHAIN_ID: "${CHAIN_ID:-31337}"
-      CHANNEL_MANAGER_ADDRESS: "${CHANNEL_MANAGER_ADDRESS:-0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512}"
+      CHANNEL_MANAGER_ADDRESS: "${CHANNEL_MANAGER_ADDRESS:-}"
       MAX_RECIPIENTS: "${MAX_RECIPIENTS:-30}"
+      SEQUENCER_PRIVATE_KEY: "${SEQUENCER_PRIVATE_KEY:-}"
       PORT: "4001"
 
   service:
