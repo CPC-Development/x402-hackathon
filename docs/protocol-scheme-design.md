@@ -44,12 +44,13 @@ Notes:
 ### 4) CPC-based subsequent payments (single client per address, local cache)
 Goal: minimize roundtrips; client trusts its local channel cache and only re-syncs on errors.
 
-1. Client uses local cache to compute the next sequence and build `PayInChannelDto`.
-2. Client sends x-payment request with `X-PAYMENT: <b64 payload>`; no preflight calls.
-3. Server submits payload to facilitator for signature validation only.
-4. Server performs the work and calls `settle`.
-5. Sequencer updates local DB, returns co-signed message (or error).
-6. Facilitator forwards `settled` to server; server returns response with `X-PAYMENT-RESPONSE`.
+1. Client calls the service; server responds `402` with CPC scheme (unless the request already includes `X-PAYMENT`).
+2. Client uses local cache to compute the next sequence and build `PayInChannelDto`.
+3. Client retries with `X-PAYMENT: <b64 payload>`; no preflight calls.
+4. Server submits payload to facilitator for signature and sequence validation only.
+5. Server performs the work and calls `settle`.
+6. Sequencer updates local DB, returns co-signed message (or error).
+7. Facilitator forwards `settled` to server; server returns response with `X-PAYMENT-RESPONSE`.
 
 Error handling / re-sync:
 - If facilitator or sequencer rejects (stale sequence, expired channel, insufficient capacity), client re-fetches
