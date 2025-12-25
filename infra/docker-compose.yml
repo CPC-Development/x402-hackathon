@@ -1,14 +1,9 @@
-version: "3.9"
-
 services:
   hardhat:
     build:
       context: ../contracts/hardhat
       dockerfile: Dockerfile
-    profiles: ["todo"]
-    command: ["sh", "-c", "echo TODO: add hardhat Dockerfile; sleep infinity"]
-    env_file:
-      - ./ports.env
+    profiles: ["hardhat"]
     ports:
       - "${HARDHAT_PORT:-8545}:8545"
 
@@ -17,8 +12,6 @@ services:
       context: ../facilitator/x402-rs
       dockerfile: Dockerfile
     profiles: ["facilitator"]
-    env_file:
-      - ./ports.env
     ports:
       - "${FACILITATOR_PORT:-8080}:8080"
     volumes:
@@ -32,8 +25,6 @@ services:
       dockerfile: Dockerfile
     profiles: ["todo"]
     command: ["sh", "-c", "echo TODO: add sequencer Dockerfile; sleep infinity"]
-    env_file:
-      - ./ports.env
     ports:
       - "${SEQUENCER_PORT:-4001}:4001"
 
@@ -43,8 +34,6 @@ services:
       dockerfile: Dockerfile
     profiles: ["todo"]
     command: ["sh", "-c", "echo TODO: add service Dockerfile; sleep infinity"]
-    env_file:
-      - ./ports.env
     ports:
       - "${SERVICE_PORT:-4000}:4000"
 
