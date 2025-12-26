@@ -31,7 +31,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - x402_pg:/var/lib/postgresql/data
+      - ../data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U x402 -d x402"]
       interval: 5s
@@ -96,14 +96,14 @@ services:
         condition: service_healthy
       sequencer:
         condition: service_healthy
-      photon:
+      nominatim:
         condition: service_healthy
     ports:
       - "${SERVICE_PORT:-4000}:4000"
     environment:
       FACILITATOR_URL: "http://facilitator:8080"
       SEQUENCER_URL: "http://sequencer:4001"
-      PHOTON_URL: "http://photon:2322"
+      NOMINATIM_URL: "http://nominatim:8080"
       CHAIN_ID: "${CHAIN_ID:-31337}"
       CHANNEL_MANAGER_ADDRESS: "${CHANNEL_MANAGER_ADDRESS:-}"
       USDC_ADDRESS: "${USDC_ADDRESS:-}"
@@ -125,29 +125,28 @@ services:
       timeout: 5s
       retries: 10
 
-  photon:
-    image: rtuszik/photon-docker:latest
-    profiles: ["photon", "service"]
+  nominatim:
+    image: mediagis/nominatim:5.2
+    profiles: ["nominatim", "service"]
     environment:
-      - REGION=monaco
-    expose:
-      - "2322"
+      - PBF_URL=https://download.geofabrik.de/europe/monaco-latest.osm.pbf
+    ports:
+      - "${NOMINATIM_PORT:-8081}:8080"
     volumes:
-      - /tmp/x402-photon-data:/photon/data
-      - /tmp/x402-photon-cache:/photon/.cache
+      - ../data/nominatim:/var/lib/postgresql/16/main
+    shm_size: "1g"
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import urllib.request,sys; url='http://localhost:2322/api?q=monaco&limit=1';\ntry:\n  urllib.request.urlopen(url, timeout=3)\n  sys.exit(0)\nexcept Exception:\n  sys.exit(1)\""
+          "python3 -c \"import urllib.request,sys; url='http://localhost:8080/status';\ntry:\n  urllib.request.urlopen(url, timeout=3)\n  sys.exit(0)\nexcept Exception:\n  sys.exit(1)\""
         ]
-      interval: 20s
+      interval: 30s
       timeout: 5s
       retries: 10
+      # Initial import can take a while; don't fail healthcheck during bootstrap.
+      start_period: 90m
 
 networks:
   default:
     name: x402_demo
-
-volumes:
-  x402_pg:

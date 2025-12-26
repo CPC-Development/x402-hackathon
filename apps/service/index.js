@@ -6,7 +6,7 @@ app.use(express.json({ limit: "1mb" }));
 const PORT = Number(process.env.PORT || 4000);
 const FACILITATOR_URL = process.env.FACILITATOR_URL || "http://facilitator:8080";
 const SEQUENCER_URL = process.env.SEQUENCER_URL || "http://sequencer:4001";
-const PHOTON_URL = process.env.PHOTON_URL || "http://photon:2322";
+const NOMINATIM_URL = process.env.NOMINATIM_URL || "http://nominatim:8080";
 const CHAIN_ID = Number(process.env.CHAIN_ID || 31337);
 const CHANNEL_MANAGER_ADDRESS = process.env.CHANNEL_MANAGER_ADDRESS || "";
 const USDC_ADDRESS = process.env.USDC_ADDRESS || "";
@@ -32,7 +32,7 @@ function buildRequirements(req, channel) {
     network: `eip155:${CHAIN_ID}`,
     maxAmountRequired: PRICE,
     resource: req.path,
-    description: "Monaco micro-geocoder (Photon)",
+    description: "Monaco micro-geocoder (Nominatim)",
     mimeType: "application/json",
     outputSchema: null,
     payTo: PAY_TO_ADDRESS,
@@ -61,7 +61,7 @@ function buildBootstrapRequirements(req, channelAmount, channelExpiry) {
     network: `eip155:${CHAIN_ID}`,
     maxAmountRequired: PRICE,
     resource: req.path,
-    description: "Monaco micro-geocoder (Photon)",
+    description: "Monaco micro-geocoder (Nominatim)",
     mimeType: "application/json",
     outputSchema: null,
     payTo: PAY_TO_ADDRESS,
@@ -257,16 +257,16 @@ async function requirePayment(req, res) {
 
 app.get("/health", (_req, res) => {
   Promise.all([
-    probe(`${PHOTON_URL}/api?q=monaco&limit=1`),
+    probe(`${NOMINATIM_URL}/search?q=monaco&format=jsonv2&limit=1&countrycodes=mc`),
     probe(`${FACILITATOR_URL}/health`),
     probe(`${SEQUENCER_URL}/health`)
   ])
-    .then(([photon, facilitator, sequencer]) => {
-      const ok = photon.ok && facilitator.ok && sequencer.ok;
+    .then(([nominatim, facilitator, sequencer]) => {
+      const ok = nominatim.ok && facilitator.ok && sequencer.ok;
       res.status(ok ? 200 : 502).json({
         ok,
         dependencies: {
-          photon,
+          nominatim,
           facilitator,
           sequencer
         }
@@ -287,10 +287,12 @@ app.get("/geocode", async (req, res) => {
   const payment = await requirePayment(req, res);
   if (!payment) return;
 
-  const url = new URL("/api", PHOTON_URL);
+  const url = new URL("/search", NOMINATIM_URL);
   url.searchParams.set("q", query);
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("countrycodes", "mc");
   if (req.query.limit) url.searchParams.set("limit", req.query.limit);
-  if (req.query.lang) url.searchParams.set("lang", req.query.lang);
+  if (req.query.lang) url.searchParams.set("accept-language", req.query.lang);
 
   const upstream = await fetch(url.toString());
   const body = await upstream.text();
@@ -311,10 +313,12 @@ app.get("/reverse", async (req, res) => {
   const payment = await requirePayment(req, res);
   if (!payment) return;
 
-  const url = new URL("/reverse", PHOTON_URL);
+  const url = new URL("/reverse", NOMINATIM_URL);
   url.searchParams.set("lat", lat);
   url.searchParams.set("lon", lon);
-  if (req.query.lang) url.searchParams.set("lang", req.query.lang);
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("addressdetails", "1");
+  if (req.query.lang) url.searchParams.set("accept-language", req.query.lang);
 
   const upstream = await fetch(url.toString());
   const body = await upstream.text();

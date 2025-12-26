@@ -1,6 +1,6 @@
-# Paid Photon proxy
+# Paid Nominatim proxy
 
-This service exposes a small, for-pay geocoder API backed by the internal Photon container.
+This service exposes a small, for-pay geocoder API backed by the internal Nominatim container.
 It requires x402 CPC payments on every request.
 
 ## Endpoints

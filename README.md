@@ -45,7 +45,7 @@ PORT_OFFSET=42 ./bootstrap-hardhat.sh
 docker compose --profile sequencer up -d --build sequencer
 docker compose --profile facilitator up -d --build facilitator
 
-# start paid proxy + photon (requires PAY_TO_ADDRESS + channel manager envs)
+# start paid proxy + nominatim (requires PAY_TO_ADDRESS + channel manager envs)
 docker compose --profile service up -d --build service
 ```
 
