@@ -3,7 +3,7 @@ services:
     build:
       context: ../contracts/hardhat
       dockerfile: Dockerfile
-    profiles: ["hardhat"]
+    profiles: ["hardhat", "sequencer", "service"]
     ports:
       - "${HARDHAT_PORT:-8545}:8545"
     environment:
@@ -11,10 +11,19 @@ services:
       - IGNITION_CREATE2_SALT=${IGNITION_CREATE2_SALT:-}
     volumes:
       - ../contracts/hardhat/ignition:/app/ignition
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}' http://localhost:8545 > /dev/null"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   postgres:
     image: postgres:16
-    profiles: ["sequencer", "facilitator"]
+    profiles: ["sequencer", "facilitator", "service"]
     environment:
       POSTGRES_USER: x402
       POSTGRES_PASSWORD: x402
@@ -23,14 +32,20 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - x402_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U x402 -d x402"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   facilitator:
     build:
       context: ../facilitator/x402-rs
       dockerfile: Dockerfile
-    profiles: ["facilitator"]
+    profiles: ["facilitator", "service"]
     depends_on:
-      - sequencer
+      sequencer:
+        condition: service_healthy
     ports:
       - "${FACILITATOR_PORT:-8080}:8080"
     volumes:
@@ -39,14 +54,22 @@ services:
       - RUST_LOG=info
       - CHANNEL_MANAGER_ADDRESS=${CHANNEL_MANAGER_ADDRESS:-}
       - USDC_ADDRESS=${USDC_ADDRESS:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   sequencer:
     build:
       context: ../apps/sequencer
       dockerfile: Dockerfile
-    profiles: ["sequencer", "facilitator"]
+    profiles: ["sequencer", "facilitator", "service"]
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      hardhat:
+        condition: service_healthy
     ports:
       - "${SEQUENCER_PORT:-4001}:4001"
     environment:
@@ -57,15 +80,70 @@ services:
       MAX_RECIPIENTS: "${MAX_RECIPIENTS:-30}"
       SEQUENCER_PRIVATE_KEY: "${SEQUENCER_PRIVATE_KEY:-}"
       PORT: "4001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4001/health > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   service:
     build:
       context: ../apps/service
       dockerfile: Dockerfile
-    profiles: ["todo"]
-    command: ["sh", "-c", "echo TODO: add service Dockerfile; sleep infinity"]
+    profiles: ["service"]
+    depends_on:
+      facilitator:
+        condition: service_healthy
+      sequencer:
+        condition: service_healthy
+      photon:
+        condition: service_healthy
     ports:
       - "${SERVICE_PORT:-4000}:4000"
+    environment:
+      FACILITATOR_URL: "http://facilitator:8080"
+      SEQUENCER_URL: "http://sequencer:4001"
+      PHOTON_URL: "http://photon:2322"
+      CHAIN_ID: "${CHAIN_ID:-31337}"
+      CHANNEL_MANAGER_ADDRESS: "${CHANNEL_MANAGER_ADDRESS:-}"
+      USDC_ADDRESS: "${USDC_ADDRESS:-}"
+      PAY_TO_ADDRESS: "${PAY_TO_ADDRESS:-}"
+      PRICE: "${PRICE:-1000000}"
+      MAX_TIMEOUT_SECONDS: "${MAX_TIMEOUT_SECONDS:-900}"
+      TIMESTAMP_SKEW_SECONDS: "${TIMESTAMP_SKEW_SECONDS:-900}"
+      CHANNEL_BOOTSTRAP_AMOUNT: "${CHANNEL_BOOTSTRAP_AMOUNT:-}"
+      CHANNEL_BOOTSTRAP_EXPIRY_SECONDS: "${CHANNEL_BOOTSTRAP_EXPIRY_SECONDS:-}"
+      MAX_RECIPIENTS: "${MAX_RECIPIENTS:-30}"
+      PORT: "4000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  photon:
+    image: rtuszik/photon-docker:latest
+    profiles: ["photon", "service"]
+    environment:
+      - REGION=monaco
+    expose:
+      - "2322"
+    volumes:
+      - /tmp/x402-photon-data:/photon/data
+      - /tmp/x402-photon-cache:/photon/.cache
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; url='http://localhost:2322/api?q=monaco&limit=1';\ntry:\n  urllib.request.urlopen(url, timeout=3)\n  sys.exit(0)\nexcept Exception:\n  sys.exit(1)\""
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 10
 
 networks:
   default:

@@ -44,10 +44,14 @@ PORT_OFFSET=42 ./bootstrap-hardhat.sh
 # start sequencer + facilitator
 docker compose --profile sequencer up -d --build sequencer
 docker compose --profile facilitator up -d --build facilitator
+
+# start paid proxy + photon (requires PAY_TO_ADDRESS + channel manager envs)
+docker compose --profile service up -d --build service
 ```
 
 Notes:
 - `bootstrap-hardhat.sh` runs `generate-env.sh`, deploys via Ignition + CREATE2, then writes `CHANNEL_MANAGER_ADDRESS` and `USDC_ADDRESS` into `.env`.
+- Set `PAY_TO_ADDRESS` in `infra/.env` (or export it) to the address that receives payments.
 
 ## Demo flow (target)
 
