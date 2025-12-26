@@ -5,6 +5,10 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DEMO_DIR="$ROOT_DIR/apps/demo-client"
 INFRA_DIR="$ROOT_DIR/infra"
 
+# Ensure a writable temp dir for tsx IPC sockets in restricted environments.
+TMPDIR="/tmp"
+export TMPDIR
+
 read_env_value() {
   key=$1
   if [ ! -f "$INFRA_DIR/.env" ]; then

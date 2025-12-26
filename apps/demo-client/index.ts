@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AbiCoder,
   Contract,
   HDNodeWallet,
   JsonRpcProvider,
@@ -9,7 +10,10 @@ import {
   Signer,
   Wallet,
   getAddress,
-  isAddress
+  isAddress,
+  keccak256,
+  solidityPacked,
+  toUtf8Bytes
 } from "ethers";
 
 type DemoConfig = {
@@ -94,7 +98,15 @@ type PayInChannelPayload = {
   purpose?: string;
 };
 
+type ChannelDomain = {
+  name: string;
+  version: string;
+  chainId: number;
+  verifyingContract: string;
+};
+
 const CHANNEL_ABI = [
+  "function channels(bytes32) view returns (address owner,uint256 balance,uint256 expiryTime,uint256 sequenceNumber)",
   "function getChannelId(address owner,uint256 expiryTime,uint256 amount) view returns (bytes32)",
   "function openChannel(uint256 amount,uint256 expiryTime,uint256 signatureTimestamp,bytes userSignature) returns (bytes32)"
 ];
@@ -108,6 +120,13 @@ const ERC20_ABI = [
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG_PATH = resolve(__dirname, "config.json");
+const CHANNEL_DATA_TYPEHASH = keccak256(
+  toUtf8Bytes("ChannelData(bytes32 channelId,uint256 sequenceNumber,uint256 timestamp,address[] recipients,uint256[] amounts)")
+);
+const DOMAIN_TYPEHASH = keccak256(
+  toUtf8Bytes("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+);
+const ABI_CODER = AbiCoder.defaultAbiCoder();
 
 function readConfigFile(path: string): DemoConfig {
   if (!existsSync(path)) {
@@ -176,6 +195,48 @@ function normalizeAddress(value: string): string {
     throw new Error(`Invalid address: ${value}`);
   }
   return getAddress(value);
+}
+
+function channelUpdateDigest(
+  domain: ChannelDomain,
+  channelId: string,
+  sequenceNumber: number,
+  timestamp: number,
+  recipients: string[],
+  amounts: bigint[]
+): string {
+  const recipientsPacked =
+    recipients.length === 0 ? "0x" : solidityPacked(recipients.map(() => "address"), recipients);
+  const amountsPacked =
+    amounts.length === 0 ? "0x" : solidityPacked(amounts.map(() => "uint256"), amounts);
+  const recipientsHash = keccak256(recipientsPacked);
+  const amountsHash = keccak256(amountsPacked);
+  const structHash = keccak256(
+    ABI_CODER.encode(
+      ["bytes32", "bytes32", "uint256", "uint256", "bytes32", "bytes32"],
+      [CHANNEL_DATA_TYPEHASH, channelId, sequenceNumber, timestamp, recipientsHash, amountsHash]
+    )
+  );
+  const domainSeparator = keccak256(
+    ABI_CODER.encode(
+      ["bytes32", "bytes32", "bytes32", "uint256", "address"],
+      [DOMAIN_TYPEHASH, keccak256(toUtf8Bytes(domain.name)), keccak256(toUtf8Bytes(domain.version)), domain.chainId, domain.verifyingContract]
+    )
+  );
+  return keccak256(solidityPacked(["bytes2", "bytes32", "bytes32"], ["0x1901", domainSeparator, structHash]));
+}
+
+function signChannelUpdate(
+  wallet: Wallet,
+  domain: ChannelDomain,
+  channelId: string,
+  sequenceNumber: number,
+  timestamp: number,
+  recipients: string[],
+  amounts: bigint[]
+): string {
+  const digest = channelUpdateDigest(domain, channelId, sequenceNumber, timestamp, recipients, amounts);
+  return wallet.signingKey.sign(digest).serialized;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit) {
@@ -257,19 +318,43 @@ async function ensureChannel(
   channelAmount: bigint,
   expiryTimestamp: number
 ): Promise<ChannelView> {
+  const channelManager = new Contract(channelManagerAddress, CHANNEL_ABI, txSigner);
+
   // 1) Look up any existing channel IDs on-chain via the sequencer's RPC helper.
   const owner = await wallet.getAddress();
   const channelIds = await listChannelsByOwner(config.sequencerUrl, owner);
 
   for (let idx = channelIds.length - 1; idx >= 0; idx -= 1) {
-    const existing = await getChannel(config.sequencerUrl, channelIds[idx]);
+    const channelId = channelIds[idx];
+    const existing = await getChannel(config.sequencerUrl, channelId);
     if (existing) {
       return existing;
+    }
+    const onchain = await channelManager.channels(channelId);
+    if (onchain.expiryTime > 0n) {
+      const seededChannel: ChannelView = {
+        channelId,
+        owner: normalizeAddress(onchain.owner),
+        balance: onchain.balance.toString(),
+        expiryTimestamp: Number(onchain.expiryTime),
+        sequenceNumber: Number(onchain.sequenceNumber),
+        userSignature: "",
+        sequencerSignature: "",
+        signatureTimestamp: 0,
+        recipients: []
+      };
+      await seedChannel(config.sequencerUrl, seededChannel);
+      const seeded = await getChannel(config.sequencerUrl, channelId);
+      if (seeded) {
+        return seeded;
+      }
     }
   }
 
   // 2) No channel seeded yet -> open a new channel on-chain.
-  const channelManager = new Contract(channelManagerAddress, CHANNEL_ABI, txSigner);
+  if (channelAmount === 0n) {
+    throw new Error("USDC balance is zero; cannot open a channel");
+  }
   const usdc = new Contract(usdcAddress, ERC20_ABI, txSigner);
   const now = Math.floor(Date.now() / 1000);
   const expiry = expiryTimestamp;
@@ -279,30 +364,13 @@ async function ensureChannel(
     channelAmount
   )) as string;
 
-  const domain = {
+  const domain: ChannelDomain = {
     name: "X402CheddrPaymentChannel",
     version: "1",
     chainId,
     verifyingContract: channelManagerAddress
   };
-  const types = {
-    ChannelData: [
-      { name: "channelId", type: "bytes32" },
-      { name: "sequenceNumber", type: "uint256" },
-      { name: "timestamp", type: "uint256" },
-      { name: "recipients", type: "address[]" },
-      { name: "amounts", type: "uint256[]" }
-    ]
-  };
-  const message = {
-    channelId,
-    sequenceNumber: 0,
-    timestamp: now,
-    recipients: [] as string[],
-    amounts: [] as bigint[]
-  };
-
-  const userSignature = await wallet.signTypedData(domain, types, message);
+  const userSignature = signChannelUpdate(wallet, domain, channelId, 0, now, [], []);
 
   // 3) Approve token spend if needed, then open the channel.
   const allowance = (await usdc.allowance(owner, channelManagerAddress)) as bigint;
@@ -399,9 +467,6 @@ async function main() {
   const balance = (await usdcRead.balanceOf(owner)) as bigint;
   const requestedAmount = config.channelAmount ?? balance;
   const channelAmount = requestedAmount > balance ? balance : requestedAmount;
-  if (channelAmount === 0n) {
-    throw new Error("USDC balance is zero; cannot open a channel");
-  }
   const now = Math.floor(Date.now() / 1000);
   const expiryTimestamp =
     requirements.extra?.channelExpiry && requirements.extra.channelExpiry > now
@@ -443,31 +508,25 @@ async function main() {
   }
 
   const timestamp = Math.floor(Date.now() / 1000);
-  const domain = {
+  const domain: ChannelDomain = {
     name: requirements.extra?.domain?.name || "X402CheddrPaymentChannel",
     version: requirements.extra?.domain?.version || "1",
     chainId: requirements.extra?.domain?.chainId || chainId,
     verifyingContract: requirements.extra?.domain?.verifyingContract || normalizedChannelManager
   };
-  const types = {
-    ChannelData: [
-      { name: "channelId", type: "bytes32" },
-      { name: "sequenceNumber", type: "uint256" },
-      { name: "timestamp", type: "uint256" },
-      { name: "recipients", type: "address[]" },
-      { name: "amounts", type: "uint256[]" }
-    ]
-  };
-  const message = {
-    channelId: channel.channelId,
-    sequenceNumber: nextSequenceNumber,
-    timestamp,
-    recipients: updated.recipients.map(r => r.recipientAddress),
-    amounts: updated.recipients.map(r => BigInt(r.balance))
-  };
+  const recipients = updated.recipients.map(r => r.recipientAddress);
+  const amounts = updated.recipients.map(r => BigInt(r.balance));
 
   // Step E) Sign the updated channel state (EIP-712).
-  const userSignature = await wallet.signTypedData(domain, types, message);
+  const userSignature = signChannelUpdate(
+    wallet,
+    domain,
+    channel.channelId,
+    nextSequenceNumber,
+    timestamp,
+    recipients,
+    amounts
+  );
 
   const payload: PayInChannelPayload = {
     channelId: channel.channelId,

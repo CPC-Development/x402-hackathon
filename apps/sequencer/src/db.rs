@@ -125,7 +125,7 @@ pub async fn save_channel(db: &PgPool, channel: &ChannelState) -> Result<(), sql
         sqlx::query(
             "INSERT INTO recipients (channel_id, recipient_address, balance, position)\
              VALUES ($1, $2, $3, $4)\
-             ON CONFLICT (channel_id, recipient_address) DO UPDATE SET\
+             ON CONFLICT (channel_id, recipient_address) DO UPDATE SET \
                 balance = EXCLUDED.balance,\
                 position = EXCLUDED.position",
         )
