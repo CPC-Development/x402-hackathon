@@ -3,6 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tracing::info;
 use crate::{
     error::AppError,
     model::{ChannelView, ChannelsByOwnerResponse, PayInChannelRequest, PayInChannelResponse, SeedChannelRequest},
@@ -62,6 +63,13 @@ pub(crate) async fn seed_channel(
     State(state): State<AppState>,
     Json(payload): Json<SeedChannelRequest>,
 ) -> Result<Json<ChannelView>, AppError> {
+    info!(
+        channel_id = %payload.channel_id,
+        owner = %payload.owner,
+        balance = %payload.balance,
+        expiry = payload.expiry_timestamp,
+        "seed channel request"
+    );
     let response = service::seed_channel(&state, payload).await?;
     Ok(Json(response))
 }
@@ -99,6 +107,11 @@ pub(crate) async fn validate_pay_in_channel(
     State(state): State<AppState>,
     Json(payload): Json<PayInChannelRequest>,
 ) -> Result<Json<PayInChannelResponse>, AppError> {
+    info!(
+        channel_id = %payload.channel_id,
+        sequence_number = payload.sequence_number,
+        "validate request"
+    );
     let response = service::validate_pay_in_channel(&state, payload).await?;
     Ok(Json(response))
 }
@@ -117,6 +130,11 @@ pub(crate) async fn settle(
     State(state): State<AppState>,
     Json(payload): Json<PayInChannelRequest>,
 ) -> Result<Json<PayInChannelResponse>, AppError> {
+    info!(
+        channel_id = %payload.channel_id,
+        sequence_number = payload.sequence_number,
+        "settle request"
+    );
     let response = service::settle(&state, payload).await?;
     Ok(Json(response))
 }

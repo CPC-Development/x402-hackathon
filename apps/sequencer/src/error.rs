@@ -1,6 +1,7 @@
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use thiserror::Error;
+use tracing::error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -23,7 +24,8 @@ impl AppError {
 }
 
 impl From<sqlx::Error> for AppError {
-    fn from(_: sqlx::Error) -> Self {
+    fn from(err: sqlx::Error) -> Self {
+        error!(error = %err, "database error");
         AppError::Internal
     }
 }

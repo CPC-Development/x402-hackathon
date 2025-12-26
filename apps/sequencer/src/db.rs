@@ -101,7 +101,7 @@ pub async fn save_channel(db: &PgPool, channel: &ChannelState) -> Result<(), sql
     sqlx::query(
         "INSERT INTO channels (channel_id, owner, balance, expiry_ts, sequence_number, user_signature, sequencer_signature, signature_timestamp)\
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\
-         ON CONFLICT (channel_id) DO UPDATE SET\
+         ON CONFLICT (channel_id) DO UPDATE SET \
             owner = EXCLUDED.owner,\
             balance = EXCLUDED.balance,\
             expiry_ts = EXCLUDED.expiry_ts,\
