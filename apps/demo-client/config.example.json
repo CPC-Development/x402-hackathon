@@ -1,0 +1,5 @@
+{
+  "rpcUrl": "http://localhost:8545",
+  "serviceUrl": "http://localhost:4000",
+  "privateKey": "0xYOUR_PRIVATE_KEY"
+}

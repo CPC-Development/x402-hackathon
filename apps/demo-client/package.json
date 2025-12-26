@@ -1,0 +1,13 @@
+{
+  "name": "x402-demo-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ethers": "^6.11.1",
+    "tsx": "^4.19.2"
+  }
+}

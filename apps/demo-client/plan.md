@@ -1,3 +1,3 @@
-create a hello-world user project that uses the lib to access a paid service.
+Create a simple CLI client that opens/seeds a channel, fetches payment requirements, signs a CPC update, and calls the paid service.
 
-the client should us a simple config file with a private key (use account #2 from smart contracts dir)
+Use a local config file (config.json) or env vars for the private key (account #2 by default if using a mnemonic).
