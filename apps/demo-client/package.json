@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx index.ts",
+    "benchmark": "tsx benchmark.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

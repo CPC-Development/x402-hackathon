@@ -127,3 +127,8 @@ Status legend: [ ] todo, [x] done, [~] in progress
 - update protocol to be compatible with x402 v2
 - deploy to sepolia with a public instance to demo speed advantage
 - make a local benchmark for TPS checks, to see how we are improving using 
+- test integration of cpc scheme with generic x402 curl wrappers etc.
+- publish client package to npm to make it easy for implementers to ship it.
+- submit PRs to @x402/fetch  and @x402/axios
+- on client side security parameters max money spent
+- make the sequencer open 2 UDP ports one for verify (1 second reservation), one for settle.

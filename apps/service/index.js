@@ -12,6 +12,7 @@ const CHANNEL_MANAGER_ADDRESS = process.env.CHANNEL_MANAGER_ADDRESS || "";
 const USDC_ADDRESS = process.env.USDC_ADDRESS || "";
 const PAY_TO_ADDRESS = process.env.PAY_TO_ADDRESS || "";
 const PRICE = process.env.PRICE || "1000000"; // 1 USDC (6 decimals)
+const DUMMY_PRICE = process.env.DUMMY_PRICE || "1"; // 1 micro USDC (1e-6)
 const MAX_TIMEOUT_SECONDS = Number(process.env.MAX_TIMEOUT_SECONDS || 900);
 const TIMESTAMP_SKEW_SECONDS = Number(process.env.TIMESTAMP_SKEW_SECONDS || 900);
 const MAX_RECIPIENTS = Number(process.env.MAX_RECIPIENTS || 30);
@@ -26,13 +27,13 @@ if (!CHANNEL_MANAGER_ADDRESS || !USDC_ADDRESS || !PAY_TO_ADDRESS) {
   );
 }
 
-function buildRequirements(req, channel) {
+function buildRequirements(req, channel, price, description) {
   return {
     scheme: "cpc",
     network: `eip155:${CHAIN_ID}`,
-    maxAmountRequired: PRICE,
+    maxAmountRequired: price,
     resource: req.path,
-    description: "Monaco micro-geocoder (Nominatim)",
+    description,
     mimeType: "application/json",
     outputSchema: null,
     payTo: PAY_TO_ADDRESS,
@@ -55,13 +56,13 @@ function buildRequirements(req, channel) {
   };
 }
 
-function buildBootstrapRequirements(req, channelAmount, channelExpiry) {
+function buildBootstrapRequirements(req, channelAmount, channelExpiry, price, description) {
   return {
     scheme: "cpc",
     network: `eip155:${CHAIN_ID}`,
-    maxAmountRequired: PRICE,
+    maxAmountRequired: price,
     resource: req.path,
-    description: "Monaco micro-geocoder (Nominatim)",
+    description,
     mimeType: "application/json",
     outputSchema: null,
     payTo: PAY_TO_ADDRESS,
@@ -163,7 +164,9 @@ async function resolveChannelByOwner(owner) {
   return channelResult;
 }
 
-async function requirePayment(req, res) {
+async function requirePayment(req, res, options = {}) {
+  const price = options.price ?? PRICE;
+  const description = options.description ?? "Monaco micro-geocoder (Nominatim)";
   if (!CHANNEL_MANAGER_ADDRESS || !USDC_ADDRESS || !PAY_TO_ADDRESS) {
     res.status(500).json({ error: "Service not configured" });
     return null;
@@ -175,18 +178,18 @@ async function requirePayment(req, res) {
     const channelResult = await resolveChannelByOwner(req.query.owner);
     let requirements;
     if (channelResult?.channel) {
-      requirements = buildRequirements(req, channelResult.channel);
+      requirements = buildRequirements(req, channelResult.channel, price, description);
     } else if (channelResult?.bootstrap) {
       let channelAmount = BOOTSTRAP_CHANNEL_AMOUNT;
       if (!channelAmount) {
         try {
-          channelAmount = (BigInt(PRICE) * 10n).toString();
+          channelAmount = (BigInt(price) * 10n).toString();
         } catch {
           channelAmount = "10000000";
         }
       }
       const channelExpiry = Math.floor(Date.now() / 1000) + BOOTSTRAP_EXPIRY_SECONDS;
-      requirements = buildBootstrapRequirements(req, channelAmount, channelExpiry);
+      requirements = buildBootstrapRequirements(req, channelAmount, channelExpiry, price, description);
     } else {
       res.status(channelResult.status || 400).json(channelResult.error);
       return null;
@@ -214,7 +217,7 @@ async function requirePayment(req, res) {
     return null;
   }
 
-  const requirements = buildRequirements(req, channelResult.channel);
+  const requirements = buildRequirements(req, channelResult.channel, price, description);
   const verifyBody = {
     x402Version: 1,
     paymentPayload,
@@ -326,6 +329,19 @@ app.get("/reverse", async (req, res) => {
   res.set("Content-Type", upstream.headers.get("content-type") || "application/json");
   res.set("X-PAYMENT-RESPONSE", payment.paymentResponseHeader);
   res.send(body);
+});
+
+app.get("/dummy", async (req, res) => {
+  const payment = await requirePayment(req, res, {
+    price: DUMMY_PRICE,
+    description: "Dummy paid ping (1 micro USDC)"
+  });
+  if (!payment) return;
+
+  res.status(200);
+  res.set("Content-Type", "text/plain");
+  res.set("X-PAYMENT-RESPONSE", payment.paymentResponseHeader);
+  res.send("1");
 });
 
 app.listen(PORT, "0.0.0.0", () => {

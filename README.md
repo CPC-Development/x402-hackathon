@@ -4,12 +4,12 @@ CPC payment-channel demo using x402 v1. This repo is structured to be handed off
 
 ## Layout
 
-- `apps/service` - Paid API demo (returns 402 + CPC scheme)
+- `contracts/hardhat` - CPC contract plan + local chain scaffolding
 - `apps/sequencer` - Sequencer service (off-chain channel updates)
+- `facilitator/x402-rs` - x402-rs fork as a git submodule
+- `apps/service` - Paid API demo (returns 402 + CPC scheme)
 - `apps/demo-client` - One-off TSX client script
 - `packages/cpc-x402-sdk` - Client helpers (signing + payload helpers)
-- `contracts/hardhat` - CPC contract plan + local chain scaffolding
-- `facilitator/x402-rs` - x402-rs fork as a git submodule
 - `docs` - Protocol notes, schema spec, hackathon checklist
 - `infra` - Docker compose + env templates
 - `scripts` - Seed/run/demo helpers
