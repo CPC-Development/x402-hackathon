@@ -1,0 +1,9 @@
+flowchart LR
+  Client[Demo client] -->|HTTP| Service[Paid service]
+  Service -->|/verify / /settle| Facilitator
+  Facilitator -->|/validate / /settle| Sequencer
+  Sequencer -->|state| Postgres[(Postgres)]
+  Service -->|proxy| Nominatim[(Nominatim)]
+  Client -->|open channel / read| Hardhat[Hardhat chain]
+  Sequencer -->|RPC read| Hardhat
+  Facilitator -->|RPC read| Hardhat

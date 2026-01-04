@@ -1,0 +1,21 @@
+sequenceDiagram
+  participant C as Client
+  participant S as Service
+  participant F as Facilitator
+  participant Q as Sequencer
+  participant N as Nominatim
+
+  C->>S: GET /geocode?query=...
+  S-->>C: 402 + accepts (CPC)
+  C->>S: GET /geocode + X-PAYMENT
+  S->>F: /verify (payload + requirements)
+  F->>Q: /validate
+  Q-->>F: ok + channel
+  F-->>S: verified
+  S->>F: /settle
+  F->>Q: /settle (persist update)
+  Q-->>F: updated channel
+  F-->>S: settled
+  S->>N: proxy geocode
+  N-->>S: results
+  S-->>C: 200 + X-PAYMENT-RESPONSE
