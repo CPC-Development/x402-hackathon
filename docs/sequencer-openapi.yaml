@@ -60,6 +60,28 @@ paths:
                 $ref: "#/components/schemas/ChannelView"
         "404":
           description: Not found
+  /channel/finalize:
+    post:
+      summary: Finalize a channel (on-chain)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeChannelRequest"
+            example:
+              channelId: "0x0000000000000000000000000000000000000000000000000000000000000000"
+      responses:
+        "200":
+          description: Finalized channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinalizeChannelResponse"
+        "400":
+          description: Bad request
+        "404":
+          description: Not found
   /channels/by-owner/{owner}:
     get:
       summary: List channels by owner (on-chain)
@@ -150,6 +172,12 @@ components:
         expiryTimestamp:
           type: integer
           format: int64
+    FinalizeChannelRequest:
+      type: object
+      required: [channelId]
+      properties:
+        channelId:
+          type: string
     FeeForPayment:
       type: object
       required: [feeDestinationAddress, feeAmountCurds]
@@ -232,6 +260,12 @@ components:
       properties:
         channel:
           $ref: "#/components/schemas/ChannelView"
+    FinalizeChannelResponse:
+      type: object
+      required: [transactionHash]
+      properties:
+        transactionHash:
+          type: string
     ChannelsByOwnerResponse:
       type: object
       required: [owner, channelIds]

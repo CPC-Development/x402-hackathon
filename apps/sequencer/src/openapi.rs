@@ -9,6 +9,7 @@ use crate::{handlers, model};
         handlers::list_channels_by_owner,
         handlers::seed_channel,
         handlers::get_channel,
+        handlers::finalize_channel,
         handlers::validate_pay_in_channel,
         handlers::settle
     ),
@@ -16,11 +17,13 @@ use crate::{handlers, model};
         schemas(
             model::SeedChannelRequest,
             model::PayInChannelRequest,
+            model::FinalizeChannelRequest,
             model::FeeForPayment,
             model::ChannelView,
             model::ChannelsByOwnerResponse,
             model::RecipientView,
-            model::PayInChannelResponse
+            model::PayInChannelResponse,
+            model::FinalizeChannelResponse
         )
     ),
     tags(

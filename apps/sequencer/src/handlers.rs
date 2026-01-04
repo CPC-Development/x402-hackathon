@@ -6,7 +6,15 @@ use axum::{
 use tracing::info;
 use crate::{
     error::AppError,
-    model::{ChannelView, ChannelsByOwnerResponse, PayInChannelRequest, PayInChannelResponse, SeedChannelRequest},
+    model::{
+        ChannelView,
+        ChannelsByOwnerResponse,
+        FinalizeChannelRequest,
+        FinalizeChannelResponse,
+        PayInChannelRequest,
+        PayInChannelResponse,
+        SeedChannelRequest,
+    },
     service,
     service::AppState,
 };
@@ -17,6 +25,7 @@ pub fn router(state: AppState) -> Router {
         .route("/channels/by-owner/:owner", get(list_channels_by_owner))
         .route("/channel/seed", post(seed_channel))
         .route("/channel/:id", get(get_channel))
+        .route("/channel/finalize", post(finalize_channel))
         .route("/validate", post(validate_pay_in_channel))
         .route("/settle", post(settle))
         .with_state(state)
@@ -113,6 +122,25 @@ pub(crate) async fn validate_pay_in_channel(
         "validate request"
     );
     let response = service::validate_pay_in_channel(&state, payload).await?;
+    Ok(Json(response))
+}
+
+#[utoipa::path(
+    post,
+    path = "/channel/finalize",
+    request_body = FinalizeChannelRequest,
+    responses(
+        (status = 200, description = "Finalized channel (on-chain)", body = FinalizeChannelResponse),
+        (status = 400, description = "Bad request"),
+        (status = 404, description = "Not found")
+    )
+)]
+pub(crate) async fn finalize_channel(
+    State(state): State<AppState>,
+    Json(payload): Json<FinalizeChannelRequest>,
+) -> Result<Json<FinalizeChannelResponse>, AppError> {
+    info!(channel_id = %payload.channel_id, "finalize request");
+    let response = service::finalize_channel(&state, payload).await?;
     Ok(Json(response))
 }
 

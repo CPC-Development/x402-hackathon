@@ -51,6 +51,12 @@ pub struct PayInChannelRequest {
     pub fee_for_payment: Option<FeeForPayment>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalizeChannelRequest {
+    pub channel_id: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelView {
@@ -76,6 +82,12 @@ pub struct RecipientView {
 #[serde(rename_all = "camelCase")]
 pub struct PayInChannelResponse {
     pub channel: ChannelView,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalizeChannelResponse {
+    pub transaction_hash: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
