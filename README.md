@@ -14,6 +14,46 @@ CPC payment-channel demo using x402 v1. This repo is structured to be handed off
 - `infra` - Docker compose + env templates
 - `scripts` - Seed/run/demo helpers
 
+## Architecture
+
+```mermaid
+flowchart LR
+  Client[Demo client] -->|HTTP| Service[Paid service]
+  Service -->|/verify / /settle| Facilitator
+  Facilitator -->|/validate / /settle| Sequencer
+  Sequencer -->|state| Postgres[(Postgres)]
+  Service -->|proxy| Nominatim[(Nominatim)]
+  Client -->|open channel / read| Hardhat[Hardhat chain]
+  Sequencer -->|RPC read| Hardhat
+  Facilitator -->|RPC read| Hardhat
+```
+
+## Sequence (402 -> pay -> 200)
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant S as Service
+  participant F as Facilitator
+  participant Q as Sequencer
+  participant N as Nominatim
+
+  C->>S: GET /geocode?query=...
+  S-->>C: 402 + accepts (CPC)
+  C->>S: GET /geocode + X-PAYMENT
+  S->>F: /verify (payload + requirements)
+  F->>Q: /validate
+  Q-->>F: ok + channel
+  F-->>S: verified
+  S->>F: /settle
+  F->>Q: /settle (persist update)
+  Q-->>F: updated channel
+  F-->>S: settled
+  S->>N: proxy geocode
+  N-->>S: results
+  S-->>C: 200 + X-PAYMENT-RESPONSE
+```
+
 ## Facilitator fork (submodule)
 
 `facilitator/x402-rs` is a git submodule pointing to the fork:
@@ -30,28 +70,25 @@ git rebase upstream/main
 
 Keep CPC changes isolated to a new scheme module and a small registration change so upstream PRs are clean.
 
-## Quickstart (placeholder)
+## Quickstart
+
+If you have not initialized submodules yet, do this once:
 
 ```bash
-# pull submodules
-cd x402
 git submodule update --init --recursive
+```
 
-# one-shot hardhat bootstrap (random mnemonic + create2 deploy + write .env)
-cd infra
-PORT_OFFSET=42 ./bootstrap-hardhat.sh
+Run the full demo (bootstrap chain, start stack, run client):
 
-# start sequencer + facilitator
-docker compose --profile sequencer up -d --build sequencer
-docker compose --profile facilitator up -d --build facilitator
-
-# start paid proxy + nominatim (requires PAY_TO_ADDRESS + channel manager envs)
-docker compose --profile service up -d --build service
+```bash
+./scripts/run-demo.sh
 ```
 
 Notes:
-- `bootstrap-hardhat.sh` runs `generate-env.sh`, deploys via Ignition + CREATE2, then writes `CHANNEL_MANAGER_ADDRESS` and `USDC_ADDRESS` into `.env`.
-- Set `PAY_TO_ADDRESS` in `infra/.env` (or export it) to the address that receives payments.
+- `./scripts/run-demo.sh` runs `infra/bootstrap-hardhat.sh`, starts the docker stack, waits for `/health`, then runs the client once.
+- Re-run only the client with `./scripts/run-demo-client.sh`.
+- To reuse an existing `.env` without redeploying: `SKIP_BOOTSTRAP=1 ./scripts/run-demo.sh`.
+- Nominatim may take time to import data; set `SKIP_WAIT=1` to skip health checks if needed.
 
 ## Demo flow (target)
 

@@ -55,3 +55,4 @@ coverage/
 **/data/
 **/tmp/
 data/
+/docs/private/
