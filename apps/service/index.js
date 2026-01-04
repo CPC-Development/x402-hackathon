@@ -175,7 +175,8 @@ async function requirePayment(req, res, options = {}) {
   const paymentHeader = req.get("X-PAYMENT");
 
   if (!paymentHeader) {
-    const channelResult = await resolveChannelByOwner(req.query.owner);
+    const owner = req.query.owner;
+    const channelResult = owner ? await resolveChannelByOwner(owner) : { bootstrap: true };
     let requirements;
     if (channelResult?.channel) {
       requirements = buildRequirements(req, channelResult.channel, price, description);

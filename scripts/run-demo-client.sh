@@ -26,6 +26,17 @@ SERVICE_URL=${SERVICE_URL:-}
 RPC_URL=${RPC_URL:-}
 SEQUENCER_URL=${SEQUENCER_URL:-}
 
+CACHE_ONLY=${CACHE_ONLY:-}
+REQUIREMENTS_ONLY=${REQUIREMENTS_ONLY:-}
+if [ "${1:-}" = "--cache-only" ]; then
+  CACHE_ONLY=1
+  shift
+fi
+if [ "${1:-}" = "--requirements-only" ]; then
+  REQUIREMENTS_ONLY=1
+  shift
+fi
+
 SERVICE_PORT=${SERVICE_PORT:-$(read_env_value SERVICE_PORT)}
 HARDHAT_PORT=${HARDHAT_PORT:-$(read_env_value HARDHAT_PORT)}
 SEQUENCER_PORT=${SEQUENCER_PORT:-$(read_env_value SEQUENCER_PORT)}
@@ -57,6 +68,12 @@ fi
 export SERVICE_URL
 export RPC_URL
 export SEQUENCER_URL
+if [ -n "$CACHE_ONLY" ]; then
+  export CACHE_ONLY=1
+fi
+if [ -n "$REQUIREMENTS_ONLY" ]; then
+  export REQUIREMENTS_ONLY=1
+fi
 
 printf "SERVICE_URL=%s\n" "$SERVICE_URL"
 printf "RPC_URL=%s\n" "$RPC_URL"
@@ -67,4 +84,4 @@ if [ ! -d node_modules ]; then
   yarn install
 fi
 
-yarn start
+yarn start "$@"

@@ -1,5 +1,6 @@
 {
   "name": "x402-demo-client",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {

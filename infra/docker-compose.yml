@@ -17,9 +17,9 @@ services:
           "CMD-SHELL",
           "curl -sf -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}' http://localhost:8545 > /dev/null"
         ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 5s
+      timeout: 2s
+      retries: 12
 
   postgres:
     image: postgres:16
@@ -35,8 +35,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U x402 -d x402"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 2s
+      retries: 12
 
   facilitator:
     build:
@@ -56,9 +56,9 @@ services:
       - USDC_ADDRESS=${USDC_ADDRESS:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/health > /dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 5s
+      timeout: 2s
+      retries: 12
 
   sequencer:
     build:
@@ -82,9 +82,9 @@ services:
       PORT: "4001"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:4001/health > /dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 5s
+      timeout: 2s
+      retries: 12
 
   service:
     build:
@@ -121,9 +121,9 @@ services:
           "CMD-SHELL",
           "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
         ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 5s
+      timeout: 2s
+      retries: 12
 
   nominatim:
     image: mediagis/nominatim:5.2
@@ -141,9 +141,9 @@ services:
           "CMD-SHELL",
           "python3 -c \"import urllib.request,sys; url='http://localhost:8080/status';\ntry:\n  urllib.request.urlopen(url, timeout=3)\n  sys.exit(0)\nexcept Exception:\n  sys.exit(1)\""
         ]
-      interval: 30s
-      timeout: 5s
-      retries: 10
+      interval: 10s
+      timeout: 3s
+      retries: 30
       # Initial import can take a while; don't fail healthcheck during bootstrap.
       start_period: 90m
 

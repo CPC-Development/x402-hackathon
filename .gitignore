@@ -37,6 +37,7 @@ __pycache__/
 .env
 .env.*
 apps/demo-client/config.json
+apps/demo-client/.cache/
 
 # IDE
 .idea/

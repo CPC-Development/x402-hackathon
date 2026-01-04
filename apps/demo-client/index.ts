@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -120,6 +120,9 @@ const ERC20_ABI = [
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG_PATH = resolve(__dirname, "config.json");
+const CACHE_DIR = resolve(__dirname, ".cache");
+const REQUIREMENTS_CACHE_PATH = resolve(CACHE_DIR, "geocode-requirements.json");
+const MONACO_RESPONSE_PATH = resolve(CACHE_DIR, "monaco.json");
 const CHANNEL_DATA_TYPEHASH = keccak256(
   toUtf8Bytes("ChannelData(bytes32 channelId,uint256 sequenceNumber,uint256 timestamp,address[] recipients,uint256[] amounts)")
 );
@@ -134,6 +137,105 @@ function readConfigFile(path: string): DemoConfig {
   }
   const raw = readFileSync(path, "utf8");
   return JSON.parse(raw) as DemoConfig;
+}
+
+function cachePath(owner: string): string {
+  const safeOwner = owner.toLowerCase();
+  return resolve(CACHE_DIR, `${safeOwner}.json`);
+}
+
+function loadRequirementsCache(): PaymentRequirements | null {
+  if (!existsSync(REQUIREMENTS_CACHE_PATH)) {
+    return null;
+  }
+  try {
+    const raw = readFileSync(REQUIREMENTS_CACHE_PATH, "utf8");
+    const cached = JSON.parse(raw) as PaymentRequirements;
+    if (!cached.scheme || !cached.network || !cached.payTo || !cached.asset) {
+      return null;
+    }
+    if (!cached.extra?.channelManager) {
+      return null;
+    }
+    const expiry = cached.extra?.channelExpiry;
+    if (expiry !== undefined) {
+      const now = Math.floor(Date.now() / 1000);
+      if (expiry <= now) {
+        rmSync(REQUIREMENTS_CACHE_PATH, { force: true });
+        return null;
+      }
+    }
+    return cached;
+  } catch {
+    rmSync(REQUIREMENTS_CACHE_PATH, { force: true });
+    return null;
+  }
+}
+
+function writeRequirementsCache(requirements: PaymentRequirements): void {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  writeFileSync(REQUIREMENTS_CACHE_PATH, JSON.stringify(requirements, null, 2));
+}
+
+function clearRequirementsCache(): void {
+  rmSync(REQUIREMENTS_CACHE_PATH, { force: true });
+}
+
+function writeCoordinateCache(index: number, lat: number, lon: number, response: unknown): void {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  const path = resolve(CACHE_DIR, `${index}.json`);
+  writeFileSync(path, JSON.stringify({ index, lat, lon, response }, null, 2));
+}
+
+function writeMonacoResponse(body: unknown): void {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  writeFileSync(MONACO_RESPONSE_PATH, JSON.stringify(body, null, 2));
+}
+
+function loadChannelCache(owner: string): ChannelView | null {
+  const path = cachePath(owner);
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    const raw = readFileSync(path, "utf8");
+    const cached = JSON.parse(raw) as Partial<ChannelView>;
+    if (!cached.channelId || cached.channelId === "0x0") {
+      return null;
+    }
+    if (cached.expiryTimestamp === undefined || cached.sequenceNumber === undefined) {
+      return null;
+    }
+    const now = Math.floor(Date.now() / 1000);
+    if (cached.expiryTimestamp <= now) {
+      rmSync(path, { force: true });
+      return null;
+    }
+    return {
+      channelId: cached.channelId,
+      owner: cached.owner || owner,
+      balance: cached.balance || "0",
+      expiryTimestamp: cached.expiryTimestamp,
+      sequenceNumber: cached.sequenceNumber,
+      userSignature: cached.userSignature || "",
+      sequencerSignature: cached.sequencerSignature || "",
+      signatureTimestamp: cached.signatureTimestamp || 0,
+      recipients: cached.recipients || []
+    };
+  } catch {
+    rmSync(path, { force: true });
+    return null;
+  }
+}
+
+function writeChannelCache(owner: string, channel: ChannelView): void {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  const path = cachePath(owner);
+  writeFileSync(path, JSON.stringify(channel, null, 2));
+}
+
+function clearChannelCache(owner: string): void {
+  rmSync(cachePath(owner), { force: true });
 }
 
 function resolveConfig(): ResolvedConfig {
@@ -322,16 +424,33 @@ async function ensureChannel(
 
   // 1) Look up any existing channel IDs on-chain via the sequencer's RPC helper.
   const owner = await wallet.getAddress();
+  if (process.env.CACHE_ONLY) {
+    const cached = loadChannelCache(owner);
+    if (!cached) {
+      throw new Error("Cache-only mode enabled, but no cached channel state found.");
+    }
+    console.log(`Cache-only mode: using cached channel ${cached.channelId}`);
+    return cached;
+  }
+  const cached = loadChannelCache(owner);
+  if (cached) {
+    console.log(`Using cached channel state (skipping sequencer lookup): ${cached.channelId}`);
+    return cached;
+  }
+  console.log("Checking sequencer for existing channels...", { owner });
   const channelIds = await listChannelsByOwner(config.sequencerUrl, owner);
+  console.log(`Sequencer returned ${channelIds.length} channel(s).`);
 
   for (let idx = channelIds.length - 1; idx >= 0; idx -= 1) {
     const channelId = channelIds[idx];
     const existing = await getChannel(config.sequencerUrl, channelId);
     if (existing) {
+      console.log(`Found existing channel in sequencer: ${channelId}`);
       return existing;
     }
     const onchain = await channelManager.channels(channelId);
     if (onchain.expiryTime > 0n) {
+      console.log(`Seeding sequencer from on-chain channel: ${channelId}`);
       const seededChannel: ChannelView = {
         channelId,
         owner: normalizeAddress(onchain.owner),
@@ -346,12 +465,14 @@ async function ensureChannel(
       await seedChannel(config.sequencerUrl, seededChannel);
       const seeded = await getChannel(config.sequencerUrl, channelId);
       if (seeded) {
+        console.log(`Sequencer seed confirmed for channel: ${channelId}`);
         return seeded;
       }
     }
   }
 
   // 2) No channel seeded yet -> open a new channel on-chain.
+  console.log("No existing channel found. Opening a new channel on-chain...");
   if (channelAmount === 0n) {
     throw new Error("USDC balance is zero; cannot open a channel");
   }
@@ -375,12 +496,23 @@ async function ensureChannel(
   // 3) Approve token spend if needed, then open the channel.
   const allowance = (await usdc.allowance(owner, channelManagerAddress)) as bigint;
   if (allowance < channelAmount) {
+    console.log("Approving token spend...", {
+      amount: channelAmount.toString(),
+      spender: channelManagerAddress
+    });
     const approveTx = await usdc.approve(channelManagerAddress, channelAmount);
     await approveTx.wait();
+    console.log("Approval confirmed.");
   }
 
+  console.log("Opening channel on-chain...", {
+    channelId,
+    amount: channelAmount.toString(),
+    expiryTimestamp: expiry
+  });
   const tx = await channelManager.openChannel(channelAmount, expiry, now, userSignature);
   await tx.wait();
+  console.log(`Channel open confirmed: ${channelId}`);
 
   // 4) Seed the sequencer's local DB so it can validate future updates.
   const channel: ChannelView = {
@@ -395,23 +527,20 @@ async function ensureChannel(
     recipients: []
   };
 
+  console.log("Seeding sequencer for new channel...", { channelId });
   await seedChannel(config.sequencerUrl, channel);
   const seeded = await getChannel(config.sequencerUrl, channelId);
   if (!seeded) {
     throw new Error("Failed to seed channel in sequencer");
   }
+  console.log(`Sequencer seed confirmed for new channel: ${channelId}`);
 
   return seeded;
 }
 
-async function requestRequirements(
-  serviceUrl: string,
-  owner: string,
-  query: string
-): Promise<PaymentRequirements> {
+async function requestRequirements(serviceUrl: string, query: string): Promise<PaymentRequirements> {
   const url = new URL("/geocode", serviceUrl);
   url.searchParams.set("query", query);
-  url.searchParams.set("owner", owner);
   const { resp, json, text } = await fetchJson<{ accepts?: PaymentRequirements[] }>(url.toString());
   if (resp.status !== 402) {
     throw new Error(`Expected 402 response, got ${resp.status}: ${text}`);
@@ -421,6 +550,132 @@ async function requestRequirements(
     throw new Error("No payment requirements returned");
   }
   return requirements;
+}
+
+function writeMonacoResponseOnce(body: unknown): void {
+  if (existsSync(MONACO_RESPONSE_PATH)) {
+    return;
+  }
+  writeMonacoResponse(body);
+}
+
+async function runReverseBatch(options: {
+  config: ResolvedConfig;
+  owner: string;
+  wallet: Wallet;
+  chainId: number;
+  requirements: PaymentRequirements;
+  channel: ChannelView;
+}): Promise<void> {
+  const { config, owner, wallet, chainId, requirements } = options;
+  let channel = options.channel;
+  const payTo = normalizeAddress(requirements.payTo);
+  const amount = toBigInt(requirements.maxAmountRequired);
+
+  const count = Number(process.env.REVERSE_COUNT || 100);
+  const startLat = Number(process.env.REVERSE_START_LAT || 43.7282151);
+  const startLon = Number(process.env.REVERSE_START_LON || 7.4135342);
+  const endLat = Number(process.env.REVERSE_END_LAT || 43.7457591);
+  const endLon = Number(process.env.REVERSE_END_LON || 7.4344044);
+
+  const domain: ChannelDomain = {
+    name: requirements.extra?.domain?.name || "X402CheddrPaymentChannel",
+    version: requirements.extra?.domain?.version || "1",
+    chainId: requirements.extra?.domain?.chainId || chainId,
+    verifyingContract: requirements.extra?.domain?.verifyingContract || requirements.extra!.channelManager
+  };
+
+  console.log(`Starting reverse-geocode batch (${count} requests).`);
+  for (let i = 1; i <= count; i += 1) {
+    const t = count <= 1 ? 0 : (i - 1) / (count - 1);
+    const lat = startLat + (endLat - startLat) * t;
+    const lon = startLon + (endLon - startLon) * t;
+    const updated = applyPayment(channel, payTo, amount);
+    const nextSequenceNumber = updated.sequenceNumber;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const recipients = updated.recipients.map(r => r.recipientAddress);
+    const amounts = updated.recipients.map(r => BigInt(r.balance));
+    const userSignature = signChannelUpdate(
+      wallet,
+      domain,
+      channel.channelId,
+      nextSequenceNumber,
+      timestamp,
+      recipients,
+      amounts
+    );
+
+    const payload: PayInChannelPayload = {
+      channelId: channel.channelId,
+      amount: amount.toString(),
+      receiver: payTo,
+      sequenceNumber: nextSequenceNumber,
+      timestamp,
+      userSignature,
+      purpose: config.purpose
+    };
+
+    const paymentPayload = {
+      x402Version: 1,
+      scheme: requirements.scheme,
+      network: requirements.network,
+      payload
+    };
+    const paymentHeader = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+
+    const paidUrl = new URL("/reverse", config.serviceUrl);
+    paidUrl.searchParams.set("lat", lat.toString());
+    paidUrl.searchParams.set("lon", lon.toString());
+
+    const paidResponse = await fetch(paidUrl.toString(), {
+      headers: {
+        "X-PAYMENT": paymentHeader
+      }
+    });
+
+    const responseText = await paidResponse.text();
+    const statusInfo = { status: paidResponse.status, ok: paidResponse.ok };
+    console.log(`Reverse ${i}/${count}:`, JSON.stringify(statusInfo));
+
+    if (!paidResponse.ok) {
+      let parsedError: unknown = responseText;
+      try {
+        parsedError = JSON.parse(responseText);
+      } catch {
+        parsedError = responseText;
+      }
+      console.warn("Reverse request failed. Clearing local caches.", parsedError);
+      clearChannelCache(owner);
+      clearRequirementsCache();
+      throw new Error("Reverse batch failed due to non-OK response.");
+    }
+
+    let parsedBody: unknown = responseText;
+    try {
+      parsedBody = JSON.parse(responseText);
+    } catch {
+      parsedBody = responseText;
+    }
+
+    writeCoordinateCache(i, lat, lon, parsedBody);
+
+    if (i === 1) {
+      writeMonacoResponseOnce(parsedBody);
+      console.log(`Stored initial reverse response at ${MONACO_RESPONSE_PATH}`);
+    }
+
+    channel = {
+      ...channel,
+      sequenceNumber: nextSequenceNumber,
+      recipients: updated.recipients,
+      userSignature,
+      sequencerSignature: "",
+      signatureTimestamp: timestamp
+    };
+    writeChannelCache(owner, channel);
+  }
+
+  console.log("Reverse batch complete.");
 }
 
 async function main() {
@@ -439,10 +694,26 @@ async function main() {
   console.log(`Using account: ${owner}`);
   console.log(`Chain ID: ${chainId}`);
 
-  // Step A) Ask the paid service for payment requirements (returns 402).
-  console.log("Requesting payment requirements (402)...", { query: config.query });
-  let requirements = await requestRequirements(config.serviceUrl, owner, config.query);
-  console.log("Received requirements:", {
+  // Step A) Ask the paid service for payment requirements (returns 402), unless cached.
+  let requirements = loadRequirementsCache();
+  if (requirements && !process.env.REQUIREMENTS_ONLY) {
+    console.log("Using cached payment requirements (skipping 402 handshake).");
+  } else if (requirements && process.env.REQUIREMENTS_ONLY) {
+    console.log("Requirements-only mode: cached payment requirements already present.");
+  } else if (!requirements) {
+    if (process.env.CACHE_ONLY) {
+      throw new Error("Cache-only mode enabled, but no cached payment requirements found.");
+    }
+    console.log("Requesting payment requirements (402)...", { query: config.query });
+    requirements = await requestRequirements(config.serviceUrl, config.query);
+    writeRequirementsCache(requirements);
+    console.log("Cached payment requirements for /geocode.");
+  }
+  if (process.env.REQUIREMENTS_ONLY) {
+    console.log("Requirements-only mode: cached payment requirements and exiting.");
+    return;
+  }
+  console.log("Using requirements:", {
     scheme: requirements.scheme,
     network: requirements.network,
     payTo: requirements.payTo,
@@ -491,21 +762,23 @@ async function main() {
   );
   console.log(`Using channel ${channel.channelId} (seq=${channel.sequenceNumber})`);
 
-  // Step D) Re-fetch requirements to get the real channelId + nextSequenceNumber.
-  console.log("Requesting updated requirements after channel setup...");
-  requirements = await requestRequirements(config.serviceUrl, owner, config.query);
-  console.log("Updated requirements:", {
-    nextSequenceNumber: requirements.extra?.nextSequenceNumber,
-    channelId: requirements.extra?.channelId
-  });
+  if (process.env.REVERSE_BATCH) {
+    await runReverseBatch({
+      config,
+      owner,
+      wallet,
+      chainId,
+      requirements,
+      channel
+    });
+    return;
+  }
+
   const payTo = normalizeAddress(requirements.payTo);
   const amount = toBigInt(requirements.maxAmountRequired);
 
   const updated = applyPayment(channel, payTo, amount);
-  const nextSequenceNumber = requirements.extra?.nextSequenceNumber ?? updated.sequenceNumber;
-  if (nextSequenceNumber !== updated.sequenceNumber) {
-    throw new Error(`Sequence mismatch (requirements=${nextSequenceNumber}, local=${updated.sequenceNumber})`);
-  }
+  const nextSequenceNumber = updated.sequenceNumber;
 
   const timestamp = Math.floor(Date.now() / 1000);
   const domain: ChannelDomain = {
@@ -563,8 +836,34 @@ async function main() {
   });
 
   const responseText = await paidResponse.text();
-  console.log(`Paid request status: ${paidResponse.status}`);
-  console.log(responseText);
+  console.log(
+    "Paid request status:",
+    JSON.stringify({ status: paidResponse.status, ok: paidResponse.ok }, null, 2)
+  );
+  try {
+    const parsed = JSON.parse(responseText);
+    console.log("Paid response body:", JSON.stringify(parsed, null, 2));
+    writeMonacoResponseOnce(parsed);
+  } catch {
+    console.log("Paid response body:", responseText);
+  }
+
+  if (paidResponse.status === 402) {
+    console.warn("Payment rejected (402). Clearing local channel cache.");
+    clearChannelCache(owner);
+    clearRequirementsCache();
+  } else if (paidResponse.ok) {
+    const cachedChannel: ChannelView = {
+      ...channel,
+      sequenceNumber: nextSequenceNumber,
+      recipients: updated.recipients,
+      userSignature,
+      sequencerSignature: "",
+      signatureTimestamp: timestamp
+    };
+    writeChannelCache(owner, cachedChannel);
+    console.log(`Cached channel state for ${owner}.`);
+  }
 
   const paymentResponseHeader = paidResponse.headers.get("x-payment-response");
   if (paymentResponseHeader) {
